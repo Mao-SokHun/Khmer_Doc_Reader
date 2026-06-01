@@ -2,7 +2,7 @@ export type Language = 'kh' | 'en';
 
 export const translations = {
   kh: {
-    documentTabs: 'Testing change',
+    documentTabs: 'Testing ',
     createTab: 'បង្កើតផ្ទាំងថ្មី',
     addLesson: 'បន្ថែមមេរៀនថ្មី...',
     edit: 'កែសម្រួល',
