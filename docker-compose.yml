@@ -1,0 +1,113 @@
+# Khmer Lesson Doc — full stack (PostgreSQL + API + Vite frontend)
+#
+# Setup:
+#   cp .env.example .env
+#   # Edit .env (PGPASSWORD, GEMINI_API_KEY, etc.)
+#
+# Start everything (dev, hot reload on port 3000):
+#   docker compose --profile dev up --build
+#
+# API + database only (no frontend):
+#   docker compose up db api
+#
+# Production-style preview (built static app; use instead of dev web):
+#   docker compose --profile prod up --build
+#
+# URLs (from your machine):
+#   App:  http://localhost:3000
+#   API:  http://localhost:3001
+
+name: khmer-lesson-doc
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: khmer-lesson-doc-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
+      POSTGRES_DB: ${PGDATABASE:-khmer_lesson_doc}
+    ports:
+      - "${PGPORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-khmer_lesson_doc}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: khmer-lesson-doc-api
+    restart: unless-stopped
+    command: node server.js
+    env_file:
+      - .env
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE:-khmer_lesson_doc}
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-postgres}
+      API_PORT: 3001
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "${API_PORT:-3001}:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Development frontend (Vite dev server)
+  web:
+    profiles: [dev]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: khmer-lesson-doc-web
+    restart: unless-stopped
+    command: npm run dev:client -- --host 0.0.0.0 --port 3000
+    env_file:
+      - .env
+    environment:
+      # Browser calls API on the host-published port
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - web_node_modules:/app/node_modules
+    depends_on:
+      - api
+
+  # Production-style frontend (build + vite preview)
+  web-prod:
+    profiles: [prod]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: khmer-lesson-doc-web-prod
+    restart: unless-stopped
+    command: sh -c "npm run build && npm run preview -- --host 0.0.0.0 --port 3000"
+    env_file:
+      - .env
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  web_node_modules:
