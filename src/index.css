@@ -289,6 +289,58 @@
     background: rgb(2 6 23) !important;
     color: rgb(226 232 240) !important;
   }
+
+  .dark .editor-paper {
+    background: rgb(15 23 42);
+    color: rgb(226 232 240);
+    box-shadow: 0 20px 50px rgb(0 0 0 / 0.35);
+  }
+
+  .dark .editor-paper .editor-surface {
+    color: rgb(226 232 240);
+  }
+
+  .dark .editor-paper .editor-ruler {
+    background: rgb(30 41 59);
+    border-color: rgb(51 65 85);
+  }
+
+  .dark .editor-paper .editor-ruler span,
+  .dark .editor-paper .editor-ruler div {
+    color: rgb(100 116 139);
+  }
+
+  .dark .editor-paper .editor-ruler .bg-slate-400 {
+    background: rgb(100 116 139);
+  }
+
+  .dark .editor-stats {
+    background: rgb(15 23 42 / 0.92);
+    border-color: rgb(51 65 85);
+    color: rgb(148 163 184);
+  }
+
+  .dark .editor-stats .text-slate-700 {
+    color: rgb(203 213 225);
+  }
+
+  /* Override inline white backgrounds from pasted / template HTML in dark mode */
+  .dark .editor-paper [style*="background:#fff"],
+  .dark .editor-paper [style*="background: #fff"],
+  .dark .editor-paper [style*="background:#ffffff"],
+  .dark .editor-paper [style*="background: #ffffff"],
+  .dark .editor-paper [style*="background-color:#fff"],
+  .dark .editor-paper [style*="background-color: #fff"],
+  .dark .editor-paper [style*="background-color:#ffffff"],
+  .dark .editor-paper [style*="background-color: #ffffff"] {
+    background-color: rgb(30 41 59) !important;
+    color: rgb(226 232 240) !important;
+  }
+
+  .dark .editor-paper [style*="color:#1"],
+  .dark .editor-paper [style*="color: #1"] {
+    color: rgb(226 232 240) !important;
+  }
 }
 
 @media print {

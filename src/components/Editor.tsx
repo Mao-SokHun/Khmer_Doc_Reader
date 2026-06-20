@@ -2274,7 +2274,7 @@ export function Editor({
                         setAlignment('left');
                         setActiveDropdown(null);
                       }}
-                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'left' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'left' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.alignLeft}
                     >
                       <AlignLeft size={16} />
@@ -2285,7 +2285,7 @@ export function Editor({
                         setAlignment('center');
                         setActiveDropdown(null);
                       }}
-                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'center' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'center' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.alignCenter}
                     >
                       <AlignCenter size={16} />
@@ -2296,7 +2296,7 @@ export function Editor({
                         setAlignment('right');
                         setActiveDropdown(null);
                       }}
-                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'right' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'right' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.alignRight}
                     >
                       <AlignRight size={16} />
@@ -2307,7 +2307,7 @@ export function Editor({
                         setAlignment('justify');
                         setActiveDropdown(null);
                       }}
-                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'justify' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'justify' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.justify}
                     >
                       <AlignJustify size={16} />
@@ -2343,8 +2343,8 @@ export function Editor({
         </div>
       </div>
 
-      <div className="fixed bottom-3 right-3 z-[90] rounded-xl border border-slate-200 bg-white/92 px-2 py-1.5 text-[10.5px] text-slate-600 shadow-sm backdrop-blur-sm w-[148px]">
-        <div className="mb-1 flex items-center gap-1 font-semibold text-slate-700">
+      <div className="editor-stats fixed bottom-3 right-3 z-[90] rounded-xl border border-slate-200 bg-white/92 px-2 py-1.5 text-[10.5px] text-slate-600 shadow-sm backdrop-blur-sm w-[148px] dark:border-slate-700 dark:bg-slate-900/92 dark:text-slate-400">
+        <div className="mb-1 flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
           <Info size={12} />
           {ui.docStats}
         </div>
@@ -2362,8 +2362,10 @@ export function Editor({
         ) : (
           <div 
             className={cn(
-              "mx-auto w-full min-h-full bg-white rounded-sm overflow-hidden relative origin-top transition-transform duration-200",
-              showPrintLayout ? "shadow-xl shadow-slate-200/50 ring-1 ring-slate-200/60" : "ring-0 shadow-none"
+              "editor-paper mx-auto w-full min-h-full rounded-sm overflow-hidden relative origin-top transition-transform duration-200 bg-white dark:bg-slate-900",
+              showPrintLayout
+                ? "shadow-xl shadow-slate-200/50 ring-1 ring-slate-200/60 dark:shadow-black/40 dark:ring-slate-700/60"
+                : "ring-0 shadow-none"
             )}
             style={{ 
               maxWidth: `${pageWidth}px`,
@@ -2373,7 +2375,7 @@ export function Editor({
           >
             {/* Simulation of a page ruler */}
             {showRuler && (
-              <div className="h-4 bg-slate-100 flex items-end px-16 border-b border-slate-200 uppercase">
+              <div className="editor-ruler h-4 bg-slate-100 dark:bg-slate-800 flex items-end px-16 border-b border-slate-200 dark:border-slate-700 uppercase">
                 {[...Array(9)].map((_, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center">
                     <div className="w-px h-1.5 bg-slate-400" />
@@ -2406,7 +2408,7 @@ export function Editor({
               onSelect={saveCurrentSelection}
               onBlur={saveCurrentSelection}
               data-placeholder=""
-              className="khmer-doc-font w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 focus:outline-none border-none"
+              className="editor-surface khmer-doc-font w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 dark:text-slate-200 focus:outline-none border-none"
               spellCheck={spellCheckEnabled}
               style={{
                 fontSize: `${fontSize + 5}px`,
@@ -2447,7 +2449,7 @@ export function Editor({
               initial={{ opacity: 0, scale: 0.96, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 8 }}
-              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+              className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden dark:border-slate-700 dark:bg-slate-900"
             >
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-800">{ui.pageSetup}</h3>
@@ -2468,7 +2470,7 @@ export function Editor({
                         setPageWidth(selected.width);
                       }
                     }}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white"
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   >
                     {paperSizeOptions.map((opt) => (
                       <option key={opt.key} value={opt.key}>
@@ -2517,7 +2519,7 @@ export function Editor({
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+              className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden dark:border-slate-700 dark:bg-slate-900"
             >
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <h3 className="text-base font-bold text-slate-800">{ui.wordCount}</h3>
@@ -2552,7 +2554,7 @@ export function Editor({
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+              className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden dark:border-slate-700 dark:bg-slate-900"
             >
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <h3 className="text-base font-bold text-slate-800">{ui.keyboardShortcuts}</h3>
@@ -2573,7 +2575,7 @@ export function Editor({
                 ].map(([name, key]) => (
                   <div key={name} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
                     <span className="text-slate-700">{name}</span>
-                    <kbd className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">{key}</kbd>
+                    <kbd className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">{key}</kbd>
                   </div>
                 ))}
               </div>
@@ -2586,7 +2588,7 @@ export function Editor({
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden"
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden dark:bg-slate-900"
             >
               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-[#f8f9fa]">
                 <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
@@ -2609,7 +2611,7 @@ export function Editor({
                   <textarea
                     value={imagePrompt}
                     onChange={(e) => setImagePrompt(e.target.value)}
-                    className="w-full h-32 p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-blue-600 focus:bg-white focus:outline-none transition-all text-slate-700 resize-none font-medium"
+                    className="w-full h-32 p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 focus:border-blue-600 focus:bg-white focus:outline-none transition-all text-slate-700 resize-none font-medium dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:focus:bg-slate-800 dark:focus:border-blue-500"
                     placeholder={ui.imagePlaceholder}
                   />
                 </div>

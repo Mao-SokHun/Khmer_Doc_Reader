@@ -214,7 +214,7 @@ export function DocViewer({
         ref={rootRef}
         {...(!previewMode || exportPreview ? { id: 'document-to-export' } : {})}
         className={previewMode
-          ? 'khmer-doc-font w-full bg-white text-slate-900 overflow-hidden'
+          ? 'khmer-doc-font w-full overflow-hidden bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100'
           : 'khmer-doc-font w-full max-w-[1180px] bg-white dark:bg-slate-900 overflow-hidden text-slate-900 dark:text-slate-100 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors'}
         style={{ fontSize: `${baseSize}px`, fontFamily: KHMER_DOCUMENT_FONT_STACK }}
       >

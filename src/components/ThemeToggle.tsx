@@ -31,7 +31,7 @@ export function ThemeToggle({ lightLabel, darkLabel }: ThemeToggleProps) {
           className={cn(
             'inline-flex h-7 w-7 items-center justify-center rounded-md transition-all',
             theme === mode
-              ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-300'
+              ? 'bg-slate-100 text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-300'
               : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
           )}
         >
