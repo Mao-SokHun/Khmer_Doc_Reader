@@ -225,7 +225,16 @@ export function contentToPlainMarkdown(content: string): string {
 export function formatLessonContent(content: string): string {
   const md = contentToPlainMarkdown(content);
   if (!md) return (content || '').trim();
-  return markdownToEditorHtml(md);
+  return applyIndentToHtmlString(markdownToEditorHtml(md));
+}
+
+/** Apply heading-indent classes to an HTML string (browser only). */
+export function applyIndentToHtmlString(html: string): string {
+  if (!html?.trim() || typeof document === 'undefined') return html || '';
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  applyDocumentIndentClasses(tmp);
+  return tmp.innerHTML;
 }
 
 /** Whether the lesson still needs auto layout. */
@@ -619,6 +628,75 @@ export function markdownToEditorHtml(value: string): string {
   return out.join('\n');
 }
 
+function isSubheadingText(text: string): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed || trimmed.length > 120) return false;
+  if ((trimmed.match(/[។.!?]/g) || []).length >= 2) return false;
+  const normalized = khmerDigitsToAscii(trimmed);
+  // Single-level numbered sub-points: "១. កុំពន្យារពេល" or "1. Don't delay"
+  if (/^\d+\.\s+\S/.test(normalized) && !isNumberedSectionHeader(trimmed)) return true;
+  return false;
+}
+
+function isSubheadingParagraphEl(el: HTMLElement): boolean {
+  if (el.tagName !== 'P' && el.tagName !== 'LI') return false;
+  return isSubheadingText(el.textContent || '');
+}
+
+/** Indent body text under headings (not flush with section titles). */
+export function applyDocumentIndentClasses(root: HTMLElement): void {
+  const clear = (el: Element) => {
+    el.classList.remove('doc-under-heading', 'doc-under-subheading', 'doc-subheading');
+    el.removeAttribute('data-section-depth');
+  };
+
+  root.querySelectorAll('.doc-under-heading, .doc-under-subheading, .doc-subheading').forEach(clear);
+
+  const walk = (container: HTMLElement) => {
+    let sectionLevel = 0;
+
+    for (const el of Array.from(container.children)) {
+      if (!(el instanceof HTMLElement)) continue;
+      if (el.hasAttribute('data-code-block-wrap') || el.closest('[data-code-block-wrap]')) continue;
+
+      const tag = el.tagName.toLowerCase();
+      if (/^h[1-6]$/.test(tag)) {
+        sectionLevel = parseInt(tag[1], 10);
+        clear(el);
+        continue;
+      }
+
+      if (sectionLevel === 0) {
+        clear(el);
+        continue;
+      }
+
+      if (!['p', 'ul', 'ol', 'blockquote', 'table'].includes(tag)) continue;
+
+      if (isSubheadingParagraphEl(el)) {
+        clear(el);
+        el.classList.add('doc-subheading');
+        el.dataset.sectionDepth = String(sectionLevel);
+        continue;
+      }
+
+      clear(el);
+      el.classList.add('doc-under-heading');
+      el.dataset.sectionDepth = String(sectionLevel);
+
+      const prev = el.previousElementSibling;
+      if (prev instanceof HTMLElement && prev.classList.contains('doc-subheading')) {
+        el.classList.add('doc-under-subheading');
+      }
+    }
+  };
+
+  walk(root);
+  root.querySelectorAll('.doc-viewer-html').forEach((node) => {
+    if (node instanceof HTMLElement) walk(node);
+  });
+}
+
 export function sanitizeExportDom(root: HTMLElement, options?: { keepCodeStyles?: boolean }): void {
   root.querySelectorAll('pre, code').forEach((el) => {
     if (el.innerHTML.includes('<br')) {
@@ -665,6 +743,8 @@ export function sanitizeExportDom(root: HTMLElement, options?: { keepCodeStyles?
     shell.appendChild(preClone);
     wrap.replaceWith(shell);
   });
+
+  applyDocumentIndentClasses(root);
 }
 
 export type ExportLang = 'kh' | 'en';

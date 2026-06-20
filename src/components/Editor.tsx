@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { formatLessonWithAiHtml, generateImageBase64, isGeminiConfigured } from '../lib/aiFormatLesson';
-import { isHtmlContent, markdownToEditorHtml, normalizeImportedMarkdown, getLessonOutlineHeadings, assignHeadingIdsInDom, findDomHeadingForOutlineId, formatLessonContent, needsLessonFormatting } from '../lib/lessonContent';
+import { isHtmlContent, markdownToEditorHtml, normalizeImportedMarkdown, getLessonOutlineHeadings, assignHeadingIdsInDom, findDomHeadingForOutlineId, formatLessonContent, needsLessonFormatting, applyDocumentIndentClasses } from '../lib/lessonContent';
 import {
   buildEditorCodeBlockHtml,
   collectEditorCodeBlocks,
@@ -457,6 +457,7 @@ export function Editor({
     if (!editor.innerHTML.trim() || editor.textContent?.trim() === '') {
       editor.innerHTML = '<p><br></p>';
     }
+    applyDocumentIndentClasses(editor);
   };
   const codeLanguageOptions = [
     { key: 'ts', label: 'TypeScript', starter: 'export function example(): void {\n  // TODO: implement\n}' },
@@ -1349,7 +1350,7 @@ export function Editor({
       editor.innerHTML = formatted;
       sanitizeEditorDom(editor);
       decorateCodeBlocks(editor);
-      updateContent(formatted);
+      updateContent(editor.innerHTML);
       saveCurrentSelection();
     } catch (error) {
       console.error('Format lesson failed:', error);
@@ -1358,7 +1359,7 @@ export function Editor({
         editor.innerHTML = local;
         sanitizeEditorDom(editor);
         decorateCodeBlocks(editor);
-        updateContent(local);
+        updateContent(editor.innerHTML);
         saveCurrentSelection();
       } catch {
         alert(ui.formatLessonAiFailed);
@@ -1492,6 +1493,87 @@ export function Editor({
     editor.focus();
     document.execCommand(type === 'indent' ? 'indent' : 'outdent');
     updateContent(editor.innerHTML);
+  };
+
+  const TAB_INSERT = '    ';
+
+  const getEditorBlock = (node: Node | null, editor: HTMLElement): HTMLElement | null => {
+    let el: HTMLElement | null = node instanceof HTMLElement ? node : (node?.parentElement ?? null);
+    while (el && el !== editor) {
+      const tag = el.tagName;
+      if (tag === 'P' || tag === 'LI' || /^H[1-6]$/.test(tag)) return el;
+      if (tag === 'DIV' && !el.hasAttribute('data-code-block-wrap')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  };
+
+  const isCollapsedAtBlockStart = (range: Range, block: HTMLElement): boolean => {
+    if (!range.collapsed) return false;
+    const probe = document.createRange();
+    probe.selectNodeContents(block);
+    probe.setEnd(range.startContainer, range.startOffset);
+    return probe.toString().replace(/[\u200B\s]/g, '') === '';
+  };
+
+  const deleteSpacesBeforeCaret = (count: number): boolean => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+    const range = sel.getRangeAt(0);
+    if (range.startContainer.nodeType !== Node.TEXT_NODE) return false;
+    const text = range.startContainer.textContent || '';
+    const offset = range.startOffset;
+    if (offset <= 0) return false;
+    let remove = 0;
+    if (text[offset - 1] === '\t') remove = 1;
+    else {
+      const slice = text.slice(Math.max(0, offset - count), offset);
+      if (!/^ +$/.test(slice)) return false;
+      remove = slice.length;
+    }
+    range.setStart(range.startContainer, offset - remove);
+    range.deleteContents();
+    return true;
+  };
+
+  const handleEditorTabKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Tab' || showPreview) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    e.preventDefault();
+    restoreSelection();
+    editor.focus();
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+
+    if (isInsideCodeBlock(range.commonAncestorContainer, editor)) {
+      if (e.shiftKey) deleteSpacesBeforeCaret(4);
+      else document.execCommand('insertText', false, TAB_INSERT);
+      updateContent(editor.innerHTML);
+      saveCurrentSelection();
+      return;
+    }
+
+    const block = getEditorBlock(range.commonAncestorContainer, editor);
+    const inList = !!block?.closest('li');
+
+    if (inList) {
+      document.execCommand(e.shiftKey ? 'outdent' : 'indent');
+    } else if (e.shiftKey) {
+      if (block && isCollapsedAtBlockStart(range, block)) document.execCommand('outdent');
+      else deleteSpacesBeforeCaret(4);
+    } else if (block && isCollapsedAtBlockStart(range, block)) {
+      document.execCommand('indent');
+    } else {
+      document.execCommand('insertText', false, TAB_INSERT);
+    }
+
+    updateContent(editor.innerHTML);
+    saveCurrentSelection();
   };
 
   const clearFormatting = () => {
@@ -2603,6 +2685,10 @@ export function Editor({
               updateContent(editor.innerHTML);
             }}
             onKeyDown={(e) => {
+              if (e.key === 'Tab') {
+                handleEditorTabKey(e);
+                return;
+              }
               if (e.key === 'Backspace' || e.key === 'Delete') {
                 const editor = editorRef.current;
                 if (editor) cleanupTypingStyleMarkers(editor);

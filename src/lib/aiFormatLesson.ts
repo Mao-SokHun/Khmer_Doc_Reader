@@ -8,6 +8,7 @@ import {
 import {
   contentToPlainMarkdown,
   formatLessonContent,
+  applyIndentToHtmlString,
   markdownToEditorHtml,
   normalizeImportedMarkdown,
 } from './lessonContent';
@@ -33,7 +34,7 @@ export async function formatLessonWithAiHtml(
   if (await isAiConfigured()) {
     try {
       const aiMd = await formatLessonMarkdownWithAi(md, lang);
-      return { html: markdownToEditorHtml(aiMd), usedAi: true };
+      return { html: applyIndentToHtmlString(markdownToEditorHtml(aiMd)), usedAi: true };
     } catch {
       /* fall through to local formatter */
     }
