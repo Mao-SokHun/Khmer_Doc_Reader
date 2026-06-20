@@ -82,13 +82,12 @@ export function structurePlainLessonText(raw: string): string {
     const trimmed = line.trim();
     if (!trimmed) {
       if (out.length && out[out.length - 1] !== '') out.push('');
-      afterSection = false;
       continue;
     }
 
     if (/^#{1,6}\s/.test(trimmed)) {
       out.push(trimmed);
-      afterSection = false;
+      afterSection = true;
       continue;
     }
 
@@ -106,13 +105,11 @@ export function structurePlainLessonText(raw: string): string {
         out.push(sentence);
         out.push('');
       }
-      afterSection = false;
       continue;
     }
 
     if (/^[-*•]\s+/.test(trimmed)) {
       out.push(trimmed.replace(/^•\s+/, '- ').replace(/^\*\s+/, '- '));
-      afterSection = false;
       continue;
     }
 
@@ -121,15 +118,17 @@ export function structurePlainLessonText(raw: string): string {
       continue;
     }
 
-    // Label lines: "Feature:" or "Features:" followed by text
     const labelMatch = trimmed.match(/^([A-Za-z\u1780-\u17FF][\w\s/&-]{0,40}):\s*(.+)$/);
     if (labelMatch && labelMatch[2].length > 3) {
-      out.push(`**${labelMatch[1].trim()}:** ${labelMatch[2].trim()}`);
-      afterSection = false;
+      if (afterSection) {
+        out.push(`- **${labelMatch[1].trim()}:** ${labelMatch[2].trim()}`);
+      } else {
+        out.push(`**${labelMatch[1].trim()}:** ${labelMatch[2].trim()}`);
+      }
       continue;
     }
 
-    // Lines under a numbered section → bullet points (including glued paragraphs)
+    // All lines under a section heading → bullets (not just the first)
     if (afterSection) {
       for (const piece of splitGluedFeatureLines(trimmed)) {
         out.push(`- ${piece}`);
@@ -137,7 +136,6 @@ export function structurePlainLessonText(raw: string): string {
       continue;
     }
 
-    afterSection = false;
     out.push(trimmed);
   }
 
@@ -193,7 +191,7 @@ export function normalizeImportedMarkdown(raw: string): string {
   text = text.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
   text = text.replace(/\n{3,}/g, '\n\n');
 
-  if (plainTextNeedsStructure(text) || hasNumberedSectionOutline(text)) {
+  if (plainTextNeedsStructure(text) || hasNumberedSectionOutline(text) || /^#{1,6}\s/m.test(text)) {
     text = structurePlainLessonText(text);
   }
 
@@ -643,6 +641,30 @@ function isSubheadingParagraphEl(el: HTMLElement): boolean {
   return isSubheadingText(el.textContent || '');
 }
 
+/** Collect block-level elements, unwrapping contenteditable div wrappers. */
+function collectDocumentBlocks(container: HTMLElement): HTMLElement[] {
+  const blocks: HTMLElement[] = [];
+
+  const walk = (node: HTMLElement) => {
+    for (const child of Array.from(node.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (child.hasAttribute('data-code-block-wrap') || child.closest('[data-code-block-wrap]')) continue;
+
+      const tag = child.tagName.toLowerCase();
+      if (/^h[1-6]$/.test(tag) || ['p', 'ul', 'ol', 'blockquote', 'table'].includes(tag)) {
+        blocks.push(child);
+        continue;
+      }
+      if (tag === 'div' && !child.hasAttribute('data-code-block-wrap')) {
+        walk(child);
+      }
+    }
+  };
+
+  walk(container);
+  return blocks;
+}
+
 /** Indent body text under headings (not flush with section titles). */
 export function applyDocumentIndentClasses(root: HTMLElement): void {
   const clear = (el: Element) => {
@@ -652,31 +674,30 @@ export function applyDocumentIndentClasses(root: HTMLElement): void {
 
   root.querySelectorAll('.doc-under-heading, .doc-under-subheading, .doc-subheading').forEach(clear);
 
-  const walk = (container: HTMLElement) => {
+  const walkBlocks = (blocks: HTMLElement[]) => {
     let sectionLevel = 0;
+    let prevBlock: HTMLElement | null = null;
 
-    for (const el of Array.from(container.children)) {
-      if (!(el instanceof HTMLElement)) continue;
-      if (el.hasAttribute('data-code-block-wrap') || el.closest('[data-code-block-wrap]')) continue;
-
+    for (const el of blocks) {
       const tag = el.tagName.toLowerCase();
       if (/^h[1-6]$/.test(tag)) {
         sectionLevel = parseInt(tag[1], 10);
         clear(el);
+        prevBlock = el;
         continue;
       }
 
       if (sectionLevel === 0) {
         clear(el);
+        prevBlock = el;
         continue;
       }
-
-      if (!['p', 'ul', 'ol', 'blockquote', 'table'].includes(tag)) continue;
 
       if (isSubheadingParagraphEl(el)) {
         clear(el);
         el.classList.add('doc-subheading');
         el.dataset.sectionDepth = String(sectionLevel);
+        prevBlock = el;
         continue;
       }
 
@@ -684,16 +705,16 @@ export function applyDocumentIndentClasses(root: HTMLElement): void {
       el.classList.add('doc-under-heading');
       el.dataset.sectionDepth = String(sectionLevel);
 
-      const prev = el.previousElementSibling;
-      if (prev instanceof HTMLElement && prev.classList.contains('doc-subheading')) {
+      if (prevBlock?.classList.contains('doc-subheading')) {
         el.classList.add('doc-under-subheading');
       }
+      prevBlock = el;
     }
   };
 
-  walk(root);
+  walkBlocks(collectDocumentBlocks(root));
   root.querySelectorAll('.doc-viewer-html').forEach((node) => {
-    if (node instanceof HTMLElement) walk(node);
+    if (node instanceof HTMLElement) walkBlocks(collectDocumentBlocks(node));
   });
 }
 

@@ -189,6 +189,12 @@
 
   .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose)
     :is(h1, h2, h3, h4, h5, h6)
+    ~ :is(p, ul, ol).doc-under-heading {
+    margin-inline-start: 2.25rem;
+  }
+
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose)
+    :is(h1, h2, h3, h4, h5, h6)
     + :is(p, ul, ol):not(.doc-under-heading):not(.doc-subheading) {
     margin-inline-start: 2.25rem;
   }
