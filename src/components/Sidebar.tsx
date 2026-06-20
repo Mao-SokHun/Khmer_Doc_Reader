@@ -88,7 +88,7 @@ const SortableLessonItem = memo(function SortableLessonItem({ lesson, activeLess
         >
           <button
             onClick={() => onSelectLesson(lesson.id)}
-            className="block min-w-0 max-w-full truncate text-[13.5px] leading-tight font-semibold pr-1 text-left"
+            className="block min-w-0 max-w-full truncate text-base leading-snug font-semibold pr-1 text-left"
           >
             {lesson.title}
           </button>
@@ -103,7 +103,7 @@ const SortableLessonItem = memo(function SortableLessonItem({ lesson, activeLess
             </button>
           ) : null}
           {isActive ? (
-            <div className="mt-2 text-[12.5px] text-slate-700 dark:text-slate-300">
+            <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
               {outlineHeadings.length > 0 ? (
                 <div className="mt-1 max-h-56 overflow-y-auto no-scrollbar space-y-0">
                   {outlineHeadings.map((heading, idx) => (
@@ -118,7 +118,7 @@ const SortableLessonItem = memo(function SortableLessonItem({ lesson, activeLess
                       title={heading.text}
                     >
                       <FileText size={11} className="mt-0.5 shrink-0 text-slate-400" />
-                      <span className="truncate text-[12px] font-medium leading-snug">{heading.text}</span>
+                      <span className="truncate text-[15px] font-medium leading-snug">{heading.text}</span>
                     </button>
                   ))}
                 </div>
@@ -135,7 +135,7 @@ const SortableLessonItem = memo(function SortableLessonItem({ lesson, activeLess
           ) : (
             <button
               onClick={() => onSelectLesson(lesson.id)}
-              className="mt-1 block min-w-0 max-w-full truncate text-[12px] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-left"
+              className="mt-1 block min-w-0 max-w-full truncate text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-left"
               title={preview}
             >
               {preview || t.newLessonContent}
@@ -156,6 +156,7 @@ interface SidebarProps {
   onAddLesson: (folderId: string) => void;
   onDeleteFolder: (id: string) => void;
   onUpdateFolder: (id: string, name: string) => void;
+  onRenameFolder?: (id: string, currentName: string) => void;
   onDeleteLesson: (id: string) => void;
   onReorderLessons: (lessonIds: string[], folderId: string) => void;
   onToggleFavorite?: (lessonId: string) => void;
@@ -175,6 +176,7 @@ export function Sidebar({
   onAddLesson,
   onDeleteFolder,
   onUpdateFolder,
+  onRenameFolder,
   onDeleteLesson,
   onReorderLessons,
   onToggleFavorite,
@@ -228,33 +230,33 @@ export function Sidebar({
 
   return (
     <div className={cn("flex h-full w-full flex-col bg-[#f3f5f9] dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-colors", className)}>
-      <div className="px-3 pt-3 pb-2 border-b border-slate-200 dark:border-slate-800 bg-[#f3f5f9] dark:bg-slate-900">
+      <div className="px-3 pt-3.5 pb-2.5 border-b border-slate-200 dark:border-slate-800 bg-[#f3f5f9] dark:bg-slate-900">
         <div className="flex items-center justify-between px-1">
-          <h3 className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-400">
+          <h3 className="text-base font-bold text-slate-600 dark:text-slate-300">
             {t.documentTabs}
           </h3>
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1">
             {onToggleFavoritesOnly ? (
               <button
                 type="button"
                 onClick={onToggleFavoritesOnly}
                 className={cn(
-                  'h-8 w-8 inline-flex items-center justify-center rounded-full transition-colors',
+                  'h-9 w-9 inline-flex items-center justify-center rounded-full transition-colors',
                   showFavoritesOnly
                     ? 'text-amber-500 bg-amber-50 dark:bg-amber-950/40'
                     : 'text-slate-500 dark:text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800'
                 )}
                 title={t.favoritesOnly ?? 'Favorites'}
               >
-                <Star size={16} className={showFavoritesOnly ? 'fill-current' : ''} />
+                <Star size={18} className={showFavoritesOnly ? 'fill-current' : ''} />
               </button>
             ) : null}
             <button 
               onClick={onAddFolder}
-              className="h-8 w-8 inline-flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="h-9 w-9 inline-flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title={t.createTab}
             >
-              <Plus size={16} />
+              <Plus size={18} />
             </button>
           </div>
         </div>
@@ -272,7 +274,7 @@ export function Sidebar({
                 <div className="group flex items-center justify-between px-1">
                   <div className="flex min-w-0 items-center gap-2.5">
                     <div className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] flex-shrink-0" />
-                    <span className="truncate text-[13px] font-bold text-slate-800 dark:text-slate-100 tracking-tight">{folder.name}</span>
+                    <span className="truncate text-base font-bold text-slate-800 dark:text-slate-100 tracking-tight">{folder.name}</span>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                      <button 
@@ -283,10 +285,7 @@ export function Sidebar({
                         <Plus size={14} />
                      </button>
                      <button 
-                        onClick={() => {
-                          const newName = window.prompt(t.renameTab, folder.name);
-                          if (newName && newName !== folder.name) onUpdateFolder(folder.id, newName);
-                        }}
+                        onClick={() => onRenameFolder?.(folder.id, folder.name)}
                         className="h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-slate-800"
                         title={t.rename}
                      >
@@ -329,7 +328,7 @@ export function Sidebar({
                   {folderLessons.length === 0 && (
                     <button 
                       onClick={() => onAddLesson(folder.id)}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-white/70 dark:hover:bg-slate-800/70 rounded-lg transition-colors italic"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-white/70 dark:hover:bg-slate-800/70 rounded-lg transition-colors italic"
                     >
                       <BookOpenText size={12} />
                       <Plus size={12} />

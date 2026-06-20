@@ -17,7 +17,7 @@ export function ThemeToggle({ lightLabel, darkLabel }: ThemeToggleProps) {
 
   return (
     <div
-      className="flex items-center rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800"
+      className="flex items-center rounded-lg bg-slate-100 p-1 dark:bg-slate-800"
       role="group"
       aria-label={lightLabel}
     >
@@ -29,13 +29,13 @@ export function ThemeToggle({ lightLabel, darkLabel }: ThemeToggleProps) {
           title={label}
           aria-pressed={theme === mode}
           className={cn(
-            'inline-flex h-7 w-7 items-center justify-center rounded-md transition-all',
+            'inline-flex h-9 w-9 items-center justify-center rounded-md transition-all',
             theme === mode
-              ? 'bg-slate-100 text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-300'
+              ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-700 dark:text-blue-300'
               : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
           )}
         >
-          <Icon size={14} />
+          <Icon size={18} />
         </button>
       ))}
     </div>

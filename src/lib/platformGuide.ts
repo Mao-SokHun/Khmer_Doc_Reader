@@ -1,0 +1,203 @@
+export const PLATFORM_GUIDE_VERSION = 'platform-v3';
+
+export const PLATFORM_GUIDE_KH = `# 📘 មគ្គុទ្ទេសក៍ប្រើប្រាស់ Khmer Doc Reader
+
+ឯកសារនេះពន្យល់ **ជំហានមួយ​រួម​មួយ** របៀបប្រើប្រាស់ platform សម្រាប់គ្រូ និងអ្នកសរសេរមេរៀន។
+
+---
+
+## 1️⃣ ចាប់ផ្ដើម — ទំព័រដើម
+
+1. បើកគេហទំព័រ → ឃើញ **ទំព័រដើម** (Home) ជាមួយបញ្ជីមេរៀន
+2. **ថយទៅទំព័រដើម** — ពេលកំពុងអានមេរៀន ចុចប៊ូតុង **«ទំព័រដើម»** ខាង Header ខ្ពស់ (ឬចុច **Esc**)
+3. **ផ្ទាំងឯកសារ** (Tabs) នៅខាងឆ្វេង — ប្រើសម្រាប់ចែកប្រភេទមេរៀន
+4. ចុច **បង្កើតផ្ទាំងថ្មី** ដើម្បីបន្ថែម Tab ថ្មី
+5. ចុច **ស្វែងរក** ឬ **Ctrl+K** ដើម្បីរកមេរៀន/ខ្លឹមសារលឿន
+
+---
+
+## 2️⃣ បង្កើតមេរៀនថ្មី
+
+1. ជ្រើស Tab នៅ Sidebar
+2. ចុច **+** បន្ថែមមេរៀន
+3. ជ្រើស **គំរូ (Template)** — ឧ. មេរៀន SQL, Lesson plan, Code block...
+4. ឬបង្កើតមេរៀនទទេ រួចសរសេរខ្លួនឯង
+
+---
+
+## 3️⃣ កែសម្រួលមេរៀន (Editor)
+
+1. បើកមេរៀន → ចុច **កែសម្រួល** ឬ **Ctrl+E**
+2. **Toolbar** ខាងលើ — អក្សរ, Heading, List, Code, Table, រូបភាព
+3. **Paste code** — platform នឹង wrap code block + syntax highlighting ដោយស្វ័យប្រវត្តិ
+4. **Markdown** — heading (#), bold (**), code fences ដំណើរការល្អ
+5. **រក្សាទុក** — autosave + ចុច **រក្សាទុក** ដើម្បី save manual + snapshot
+
+---
+
+## 4️⃣ មើល & រុករកមេរៀន
+
+1. **View mode** — អានមេរៀនជា Markdown + code highlight
+2. **Outline** (Sidebar) — ចុចចំណងជើង → scroll ទៅផ្នែកនោះ
+3. **Presentation** — បង្ហាញជា slides (ចុច Present)
+4. **Dark / Light mode** — ប៊ូតុងព្រះច័ន្ទ/ព្រះអាទិត្យ ខាង Header
+
+---
+
+## 5️⃣ ចែករំលែក & ទាញយក
+
+1. **Share** — បង្កើត link មើល read-only (?share=...)
+2. **PDF** — ទាញយក PDF (More menu → Export)
+3. **Markdown** — export .md file
+4. **Version history** — មើល/restore កំណែមុន (រក្សាទុក per browser)
+
+---
+
+## 6️⃣ AI (បើមាន Gemini API key)
+
+1. **Translate** — បកប្រែមេរៀនទៅភាសាផ្សេង
+2. **Generate image** — បង្កើតរូបភាពពី prompt
+
+---
+
+## 🔟 គំរូឯកសារ (Templates)
+
+មាន **គំរូស្រាប់** សម្រាប់បង្កើតឯកសារលឿន — ចុច **+** បន្ថែមមេរៀន ឬ **គំរូមេរៀន** នៅទំព័រដើម៖
+
+| គំរូ | ប្រើសម្រាប់ |
+|------|------------|
+| **Resume / CV** | របាយការណ៍ជីវភាព បទពិសោធន៍ ការអប់រំ ជំនាញ |
+| **របាយការណ៍** | របាយការណ៍ការងារ លទ្ធផល បញ្ហា ផែនការបន្ត |
+| **គម្រោង** | គម្រោងផ្សេងៗ — timeline តួនាទី ហានិភ័យ |
+| **សឥ្ធាកម្មមេរៀន** | គោលបំណង សកម្មភាព វាយតម្លៃ (សម្រាប់គ្រូ) |
+| **មេរៀន SQL** | Query, UNION, EXCEPT, Functions |
+| **កិច្ចការផ្ទះ / Quiz** | កិច្ចការផ្ទះ ឬមេរៀន + quiz |
+| **កំណត់ត្រាប្រជុំ** | របៀបវារៈ action items |
+
+**របៀបប្រើ:** ជ្រើស Tab → **+** → ជ្រើសគំរូ → កែសម្រួលខ្លឹមសារ → **រក្សាទុក**
+
+---
+
+## ⌨️ Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+K | ស្វែងរក |
+| Ctrl+E | កែសម្រួល |
+| Ctrl+S | រក្សាទុក (ក្នុង editor) |
+
+---
+
+## 💡 Tips
+
+- មិនចាំបាច់ login — ទិន្នន័យរក្សាទុក per browser
+- ប្រើ **Templates** — Resume, របាយការណ៍, គម្រោង, SQL, Lesson plan
+- ប្រើ **Outline** សម្រាប់មេរៀនវែង
+
+---
+
+**ចាប់ផ្ដើមឥឡូវ:** បង្កើត Tab → បន្ថែមមេរៀន → កែសម្រួល → Share ឬ PDF! 🎉
+`;
+
+export const PLATFORM_GUIDE_EN = `# 📘 Khmer Doc Reader — User Guide
+
+This document walks you through **step by step** how to use the platform.
+
+---
+
+## 1️⃣ Getting started — Home
+
+1. Open the site → see the **Home** dashboard with your lessons
+2. **Back to Home** — while reading a lesson, click the **Home** button in the top header (or press **Esc**)
+3. **Document tabs** on the left organize lessons by topic
+4. Click **Create new tab** to add a folder
+5. Click **Search** or press **Ctrl+K** to find lessons quickly
+
+---
+
+## 2️⃣ Create a new lesson
+
+1. Select a tab in the sidebar
+2. Click **+** to add a lesson
+3. Pick a **template** (SQL lesson, lesson plan, code block, etc.)
+4. Or start blank and write your own content
+
+---
+
+## 3️⃣ Edit a lesson (Editor)
+
+1. Open a lesson → click **Edit** or \`Ctrl+E\`
+2. Use the **toolbar** — fonts, headings, lists, code, tables, images
+3. **Paste code** — auto-wraps into syntax-highlighted blocks
+4. **Markdown** — \`# headings\`, \`**bold**\`, fenced code blocks work well
+5. **Save** — autosave runs automatically; click **Save** for manual save + snapshot
+
+---
+
+## 4️⃣ View & navigate
+
+1. **View mode** — read rendered Markdown with code highlighting
+2. **Outline** (sidebar) — click a heading to jump to that section
+3. **Presentation** — slide mode for teaching
+4. **Dark / Light mode** — toggle in the header
+
+---
+
+## 5️⃣ Share & export
+
+1. **Share** — create a read-only link (\`?share=...\`)
+2. **PDF** — export from the header / More menu
+3. **Markdown** — download \`.md\`
+4. **Version history** — view and restore older versions (stored per browser)
+
+---
+
+## 6️⃣ AI features (when Gemini API key is configured)
+
+1. **Translate** — translate lesson content to another language
+2. **Generate image** — create images from a text prompt
+
+---
+
+## 🔟 Document templates
+
+Ready-made **templates** help you create documents quickly — click **+** to add a lesson or **Templates** on the home page:
+
+| Template | Use for |
+|----------|---------|
+| **Resume / CV** | Work history, education, skills |
+| **Report** | Progress reports, results, next steps |
+| **Project** | Project plans — timeline, roles, risks |
+| **Lesson plan** | Objectives, activities, assessment (teachers) |
+| **SQL lesson** | Queries, UNION, EXCEPT, functions |
+| **Homework / Quiz** | Assignments or lessons with quiz blocks |
+| **Meeting notes** | Agenda, decisions, action items |
+
+**How to use:** Pick a tab → **+** → choose a template → edit content → **Save**
+
+---
+
+## ⌨️ Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| \`Ctrl+K\` | Search |
+| \`Ctrl+E\` | Edit |
+| \`Ctrl+S\` | Save (in editor) |
+
+---
+
+## 💡 Tips
+
+- No login required — your workspace is saved per browser
+- Use **Templates** — Resume, Report, Project, SQL, Lesson plan
+- Use the **Outline** for long documents
+
+---
+
+**Start now:** Create a tab → Add a lesson → Edit → Share or export PDF! 🎉
+`;
+
+export function getPlatformGuide(lang: 'kh' | 'en'): string {
+  return lang === 'kh' ? PLATFORM_GUIDE_KH : PLATFORM_GUIDE_EN;
+}

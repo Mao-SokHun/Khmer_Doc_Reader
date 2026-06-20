@@ -26,7 +26,7 @@ interface DocViewerProps {
 
 export function DocViewer({
   content,
-  fontSize = 14,
+  fontSize = 19,
   navigateToText,
   navigateToHeadingId,
   navigateToSeq = 0,
@@ -39,7 +39,7 @@ export function DocViewer({
   const highlightTimerRef = useRef<number | null>(null);
   const proseRef = useRef<HTMLDivElement>(null);
   // Match user-selected size directly for consistent on-screen/export reading
-  const baseSize = Math.max(13, fontSize);
+  const baseSize = Math.max(17, fontSize);
   const h1Size = baseSize * 1.42;
   const h2Size = baseSize * 1.26;
   const h3Size = baseSize * 1.14;

@@ -99,7 +99,7 @@ export function CodeBlock({ language, code, exportPreview = false }: CodeBlockPr
           background: codeSurface,
           border: 'none',
           borderRadius: 0,
-          fontSize: '14px',
+          fontSize: '15px',
           fontFamily:
             '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
           lineHeight: 1.65,

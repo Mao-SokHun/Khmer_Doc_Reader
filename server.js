@@ -195,6 +195,19 @@ app.delete('/api/folders/:id', async (req, res) => {
   }
 });
 
+app.post('/api/workspace/clear', async (req, res) => {
+  try {
+    const ownerId = String(req.body?.ownerId || '');
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    await pool.query('DELETE FROM lesson_snapshots WHERE owner_id = $1', [ownerId]);
+    await pool.query('DELETE FROM lessons WHERE owner_id = $1', [ownerId]);
+    await pool.query('DELETE FROM folders WHERE owner_id = $1', [ownerId]);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 app.get('/api/lessons', async (req, res) => {
   try {
     const ownerId = String(req.query.ownerId || '');

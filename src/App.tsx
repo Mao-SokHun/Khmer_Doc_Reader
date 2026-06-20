@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Folder, Lesson, SharedLessonPayload } from './types';
 import { getApiBaseUrl, formatApiError, fetchWithRetry } from './lib/apiBaseUrl';
+import { PLATFORM_GUIDE_VERSION } from './lib/platformGuide';
 import { cn } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
 import { HomePage } from './components/HomePage';
@@ -36,6 +37,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { PresentationMode } from './components/PresentationMode';
 import { TemplatePickerModal } from './components/TemplatePickerModal';
+import { NameInputModal } from './components/NameInputModal';
 import { getOwnerId, getOwnerLabel } from './lib/auth';
 import { loadFontSize, saveFontSize } from './lib/preferences';
 import type { LessonTemplate } from './lib/templates';
@@ -127,16 +129,21 @@ export default function App() {
   const [shareRole, setShareRole] = useState<'viewer' | 'commenter' | 'editor'>('viewer');
   const [translateTarget, setTranslateTarget] = useState('en');
   const [showHeaderMoreMenu, setShowHeaderMoreMenu] = useState(false);
+  const [nameModal, setNameModal] = useState<
+    | { kind: 'createTab' }
+    | { kind: 'renameTab'; folderId: string; currentName: string }
+    | null
+  >(null);
   const [lessonSnapshots, setLessonSnapshots] = useState<LessonSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [navigateToText, setNavigateToText] = useState<string | null>(null);
   const [navigateToHeadingId, setNavigateToHeadingId] = useState<string | null>(null);
   const [navigateToSeq, setNavigateToSeq] = useState(0);
-  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const [sidebarWidth, setSidebarWidth] = useState(320);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const sidebarResizeRafRef = useRef<number | null>(null);
-  const pendingSidebarWidthRef = useRef(300);
+  const pendingSidebarWidthRef = useRef(320);
   const headerMoreMenuRef = useRef<HTMLDivElement | null>(null);
 
   const t = translations[lang];
@@ -158,7 +165,41 @@ export default function App() {
     return response.json() as Promise<T>;
   };
 
-  const loadWorkspace = async (ownerId: string) => {
+  const seedPlatformGuide = async (ownerId: string, currentLang: Language): Promise<string> => {
+    const tr = translations[currentLang];
+    const guideFolder = await apiFetch<Folder>('/api/folders', {
+      method: 'POST',
+      body: JSON.stringify({
+        ownerId,
+        name: tr.guideFolder,
+        order: 0,
+      }),
+    });
+    const guideLesson = await apiFetch<Lesson>('/api/lessons', {
+      method: 'POST',
+      body: JSON.stringify({
+        ownerId,
+        folderId: guideFolder.id,
+        title: tr.guideTitle,
+        content: tr.guideContent,
+        order: 0,
+      }),
+    });
+    return guideLesson.id;
+  };
+
+  const loadWorkspace = async (ownerId: string, currentLang: Language) => {
+    const versionKey = 'khmer-doc-guide-version';
+    let guideLessonId: string | null = null;
+    if (localStorage.getItem(versionKey) !== PLATFORM_GUIDE_VERSION) {
+      await apiFetch('/api/workspace/clear', {
+        method: 'POST',
+        body: JSON.stringify({ ownerId }),
+      });
+      guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+      localStorage.setItem(versionKey, PLATFORM_GUIDE_VERSION);
+    }
+
     const [folderList, lessonList] = await Promise.all([
       apiFetch<Folder[]>(`/api/folders?ownerId=${encodeURIComponent(ownerId)}`),
       apiFetch<Lesson[]>(`/api/lessons?ownerId=${encodeURIComponent(ownerId)}`),
@@ -168,54 +209,13 @@ export default function App() {
     setLessons(lessonList);
 
     if (folderList.length === 0) {
-      const sqlFolder = await apiFetch<Folder>('/api/folders', {
-        method: 'POST',
-        body: JSON.stringify({
-          ownerId,
-          name: t.sqlFolder,
-          order: 0,
-        }),
-      });
-      await apiFetch<Lesson>('/api/lessons', {
-        method: 'POST',
-        body: JSON.stringify({
-          ownerId,
-          folderId: sqlFolder.id,
-          title: t.sqlLessonTitle,
-          content: t.sqlLessonContent,
-          order: 0,
-        }),
-      });
+      guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+      await loadWorkspace(ownerId, currentLang);
+      return;
+    }
 
-      const guideFolder = await apiFetch<Folder>('/api/folders', {
-        method: 'POST',
-        body: JSON.stringify({
-          ownerId,
-          name: t.guideFolder,
-          order: 1,
-        }),
-      });
-      await apiFetch<Lesson>('/api/lessons', {
-        method: 'POST',
-        body: JSON.stringify({
-          ownerId,
-          folderId: guideFolder.id,
-          title: t.guideTitle,
-          content: t.guideContent,
-          order: 0,
-        }),
-      });
-      await apiFetch<Lesson>('/api/lessons', {
-        method: 'POST',
-        body: JSON.stringify({
-          ownerId,
-          folderId: guideFolder.id,
-          title: t.advancedGuideTitle,
-          content: t.advancedGuideContent,
-          order: 1,
-        }),
-      });
-      await loadWorkspace(ownerId);
+    if (guideLessonId) {
+      setActiveLessonId(guideLessonId);
     }
   };
 
@@ -274,7 +274,7 @@ export default function App() {
     let cancelled = false;
     const run = async () => {
       try {
-        await loadWorkspace(ownerId);
+        await loadWorkspace(ownerId, lang);
         if (!cancelled) setWorkspaceLoadError(null);
       } catch (e) {
         if (!cancelled) {
@@ -418,15 +418,10 @@ export default function App() {
         .trim();
 
     const pairs: Array<[string, string, string[]?]> = [
-      [translations.kh.sqlFolder, translations.en.sqlFolder],
       [translations.kh.guideFolder, translations.en.guideFolder],
-      [translations.kh.sqlLessonTitle, translations.en.sqlLessonTitle],
       [translations.kh.guideTitle, translations.en.guideTitle],
-      [translations.kh.advancedGuideTitle, translations.en.advancedGuideTitle],
-      ['មគ្គុទ្ទេសក៍ប្រើប្រាស់', 'User Guide', ['មគ្គុទ្ទេសក៍', 'guide']],
-      ['សង្ខេបមេរៀន sql set operators', 'SQL Set Operators & Functions Summary', ['set operators', 'sql']],
-      ['ស្វាគមន៍មកកាន់ប្រព័ន្ធគ្រប់គ្រងមេរៀនឆ្លាតវៃ', 'Welcome to Smart Lesson Manager', ['smart lesson manager', 'ស្វាគមន៍']],
-      ['មុខងារកម្រិតខ្ពស់ និងមានប្រយោជន៍បំផុត', 'Advanced & Useful Features', ['advanced useful', 'កម្រិតខ្ពស់']],
+      ['មគ្គុទ្ទេសក៍', 'Guide'],
+      ['មគ្គុទ្ទេសក៍ប្រើប្រាស់', 'Platform User Guide', ['platform user guide', 'guide']],
     ];
     const normalizedValue = normalize(value);
     for (const [khValue, enValue, aliases = []] of pairs) {
@@ -578,24 +573,35 @@ export default function App() {
 
 
 
-  const addFolder = async () => {
-    const defaultName = lang === 'kh' ? 'ផ្ទាំង ' : 'Tab ';
-    const name = window.prompt(t.enterTabName, defaultName + (folders.length + 1));
-    if (!name) return;
-    try {
-      const newFolder = await apiFetch<Folder>('/api/folders', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          ownerId: ownerId,
-          order: folders.length,
-        }),
-      });
-      setFolders((prev) => [...prev, newFolder].sort((a, b) => a.order - b.order));
-    } catch (e) {
-      console.error(e);
-      alert(t.errorCreatingTab);
+  const addFolder = () => {
+    setNameModal({ kind: 'createTab' });
+  };
+
+  const requestRenameFolder = (folderId: string, currentName: string) => {
+    setNameModal({ kind: 'renameTab', folderId, currentName });
+  };
+
+  const handleNameModalConfirm = async (name: string) => {
+    if (!nameModal) return;
+    if (nameModal.kind === 'createTab') {
+      try {
+        const newFolder = await apiFetch<Folder>('/api/folders', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            ownerId: ownerId,
+            order: folders.length,
+          }),
+        });
+        setFolders((prev) => [...prev, newFolder].sort((a, b) => a.order - b.order));
+      } catch (e) {
+        console.error(e);
+        alert(t.errorCreatingTab);
+      }
+    } else if (name !== nameModal.currentName) {
+      await updateFolder(nameModal.folderId, name);
     }
+    setNameModal(null);
   };
 
   const handleReorderLessons = async (lessonIds: string[], folderId: string) => {
@@ -819,6 +825,14 @@ ${activeLesson.content}`;
     );
   };
 
+  const goHome = useCallback(() => {
+    setActiveLessonId(null);
+    setIsEditing(false);
+    setActiveHeadingId(null);
+    setNavigateToText(null);
+    setNavigateToHeadingId(null);
+  }, []);
+
   const shareLink = shareToken
     ? `${window.location.origin}${window.location.pathname}?share=${shareToken}`
     : '';
@@ -830,10 +844,11 @@ ${activeLesson.content}`;
         ? {
             'ctrl+e': () => setIsEditing(true),
             'ctrl+p': () => setShowPresentation(true),
+            escape: () => goHome(),
           }
         : {}),
     }),
-    [activeLesson, isEditing]
+    [activeLesson, isEditing, goHome]
   );
   useKeyboardShortcuts(!sharedPayload, keyboardShortcuts);
 
@@ -922,6 +937,7 @@ ${activeLesson.content}`;
           onAddLesson={promptAddLesson}
           onDeleteFolder={deleteFolder}
           onUpdateFolder={updateFolder}
+          onRenameFolder={requestRenameFolder}
           onDeleteLesson={deleteLesson}
           onReorderLessons={handleReorderLessons}
           onToggleFavorite={toggleFavorite}
@@ -941,40 +957,55 @@ ${activeLesson.content}`;
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 lg:px-4 z-10 transition-colors">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 lg:px-5 z-10 transition-colors">
           <div className="min-w-0 flex-1 overflow-hidden pr-2">
-            {activeLesson && (
-              <div className="flex min-w-0 items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                <BookOpen size={14} className="shrink-0" />
-                <span className="hidden md:inline truncate max-w-[100px] lg:max-w-[140px]">
-                  {uiFolders.find((f) => f.id === activeLesson.folderId)?.name}
-                </span>
-                <ChevronRight size={12} className="hidden md:inline shrink-0 opacity-50" />
-                <span className="truncate font-semibold text-slate-800 dark:text-slate-100">
-                  {localizeSeedLabel(activeLesson.title)}
-                </span>
+            {activeLesson ? (
+              <div className="flex min-w-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={goHome}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  title={t.backToHome}
+                >
+                  <Layout size={18} className="text-blue-500" />
+                  <span className="hidden sm:inline">{t.home}</span>
+                </button>
+                <div className="flex min-w-0 items-center gap-1.5 text-base text-slate-500 dark:text-slate-400">
+                  <span className="hidden md:inline truncate max-w-[100px] lg:max-w-[140px]">
+                    {uiFolders.find((f) => f.id === activeLesson.folderId)?.name}
+                  </span>
+                  <ChevronRight size={12} className="hidden md:inline shrink-0 opacity-50" />
+                  <span className="truncate font-semibold text-slate-800 dark:text-slate-100">
+                    {localizeSeedLabel(activeLesson.title)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-w-0 items-center gap-2 text-base font-semibold text-slate-700 dark:text-slate-200">
+                <Layout size={18} className="shrink-0 text-blue-500" />
+                <span className="truncate">{t.home}</span>
               </div>
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => setShowSearchModal(true)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title={`${t.search} (Ctrl+K)`}
             >
-              <Search size={16} />
+              <Search size={20} />
             </button>
 
             <ThemeToggle lightLabel={t.lightMode} darkLabel={t.darkMode} />
 
-            <div className="flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
+            <div className="flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
               <button
                 type="button"
                 onClick={() => setLang('kh')}
                 className={cn(
-                  'px-1.5 py-0.5 text-[10px] font-bold rounded-md transition-all',
+                  'min-w-[2.5rem] px-2.5 py-1.5 text-sm font-bold rounded-md transition-all',
                   lang === 'kh'
                     ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
                     : 'text-slate-500 dark:text-slate-400'
@@ -986,7 +1017,7 @@ ${activeLesson.content}`;
                 type="button"
                 onClick={() => setLang('en')}
                 className={cn(
-                  'px-1.5 py-0.5 text-[10px] font-bold rounded-md transition-all',
+                  'min-w-[2.5rem] px-2.5 py-1.5 text-sm font-bold rounded-md transition-all',
                   lang === 'en'
                     ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
                     : 'text-slate-500 dark:text-slate-400'
@@ -1004,23 +1035,23 @@ ${activeLesson.content}`;
                   type="button"
                   onClick={() => setShowExportModal(true)}
                   disabled={isExporting}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
                   title={t.downloadPdf}
                 >
                   {isExporting ? (
-                    <Loader2 size={16} className="animate-spin text-blue-500" />
+                    <Loader2 size={20} className="animate-spin text-blue-500" />
                   ) : (
-                    <Download size={16} className="text-red-500" />
+                    <Download size={20} className="text-red-500" />
                   )}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setIsEditing(true)}
-                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
                   title={t.edit}
                 >
-                  <Edit3 size={14} />
+                  <Edit3 size={16} />
                   <span className="hidden sm:inline">{t.edit}</span>
                 </button>
 
@@ -1029,16 +1060,16 @@ ${activeLesson.content}`;
                     type="button"
                     onClick={() => setShowHeaderMoreMenu((s) => !s)}
                     className={cn(
-                      'inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors',
+                      'inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors',
                       showHeaderMoreMenu && 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
                     )}
                     title={lang === 'kh' ? 'ផ្សេងទៀត' : 'More'}
                   >
-                    <MoreHorizontal size={16} />
+                    <MoreHorizontal size={20} />
                   </button>
                   {showHeaderMoreMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1 shadow-xl z-40">
-                      <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1 shadow-xl z-40">
+                      <p className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
                         {lang === 'kh' ? 'ផ្សេងទៀត' : 'More actions'}
                       </p>
                       <button
@@ -1048,9 +1079,9 @@ ${activeLesson.content}`;
                           setShowPresentation(true);
                           setShowHeaderMoreMenu(false);
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
                       >
-                        <Presentation size={14} className="text-indigo-500" />
+                        <Presentation size={16} className="text-indigo-500" />
                         {t.presentation}
                       </button>
                       <button
@@ -1059,9 +1090,9 @@ ${activeLesson.content}`;
                           exportMarkdown();
                           setShowHeaderMoreMenu(false);
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
                       >
-                        <FileDown size={14} className="text-emerald-500" />
+                        <FileDown size={16} className="text-emerald-500" />
                         {t.exportMarkdown}
                       </button>
                       <button
@@ -1070,13 +1101,13 @@ ${activeLesson.content}`;
                           duplicateActiveLesson();
                           setShowHeaderMoreMenu(false);
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
                       >
-                        <CopyPlus size={14} className="text-violet-500" />
+                        <CopyPlus size={16} className="text-violet-500" />
                         {t.duplicate}
                       </button>
                       <div className="my-1 border-t border-slate-100 dark:border-slate-700" />
-                      <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                      <p className="px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-400">
                         {t.translate}
                       </p>
                       {translateLanguageOptions.map((option) => (
@@ -1090,7 +1121,7 @@ ${activeLesson.content}`;
                             await handleTranslateContent(option.code);
                           }}
                           className={cn(
-                            'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50',
+                            'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50',
                             translateTarget === option.code
                               ? 'font-semibold text-blue-600 dark:text-blue-300'
                               : 'text-slate-700 dark:text-slate-200'
@@ -1122,7 +1153,7 @@ ${activeLesson.content}`;
                 type="button"
                 onClick={() => {
                   setWorkspaceLoadError(null);
-                  loadWorkspace(ownerId).catch((e) =>
+                  loadWorkspace(ownerId, lang).catch((e) =>
                     setWorkspaceLoadError(e instanceof Error ? e.message : String(e))
                   );
                 }}
@@ -1591,6 +1622,23 @@ ${activeLesson.content}`;
           }}
           lang={lang}
           onPick={createLessonFromTemplate}
+        />
+
+        <NameInputModal
+          open={nameModal !== null}
+          title={nameModal?.kind === 'renameTab' ? t.renameTabTitle : t.createTabTitle}
+          label={t.enterTabName}
+          defaultValue={
+            nameModal?.kind === 'renameTab'
+              ? nameModal.currentName
+              : lang === 'kh'
+                ? `ផ្ទាំង ${folders.length + 1}`
+                : `Tab ${folders.length + 1}`
+          }
+          confirmLabel={t.confirm}
+          cancelLabel={t.cancel}
+          onConfirm={handleNameModalConfirm}
+          onClose={() => setNameModal(null)}
         />
 
         {showPresentation && activeLesson ? (

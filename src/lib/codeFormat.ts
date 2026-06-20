@@ -6,9 +6,9 @@ const CODE_LINE =
 const EDITOR_CODE_WRAP_STYLE =
   'margin:12px 0;border-radius:14px;border:1px solid #d5dbe5;overflow:hidden;background:#e9edf3;';
 const EDITOR_CODE_LABEL_STYLE =
-  'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #d5dbe5;background:#e9edf3;color:#374151;font-family:"Inter",sans-serif;font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;';
+  'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #d5dbe5;background:#e9edf3;color:#374151;font-family:"Inter",sans-serif;font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;';
 const EDITOR_CODE_PRE_STYLE =
-  'margin:0;padding:14px 16px;border:0;border-radius:0;background:#dfe5ee;color:#1e293b;font-family:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace;font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;';
+  'margin:0;padding:14px 16px;border:0;border-radius:0;background:#dfe5ee;color:#1e293b;font-family:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace;font-size:14px;line-height:1.65;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;';
 const EDITOR_CODE_CODE_STYLE =
   'font-family:inherit;font-size:inherit;color:inherit;background:transparent;white-space:inherit;';
 

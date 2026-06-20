@@ -318,13 +318,497 @@ SELECT * FROM table_name;
 \`\`\`
 `;
 
-export type MarkdownTemplateId = 'blank' | 'sql' | 'quiz' | 'homework';
+export const RESUME_KH = `# របាយការណ៍ជីវភាព (Resume / CV)
+
+**ឈ្មោះ:** _______________  
+**ទំនាក់ទង:** _______________  
+**Email:** _______________  
+**LinkedIn / Portfolio:** _______________
+
+---
+
+## បទពិសោធន៍ការងារ
+
+### [តួនាទី] — [ក្រុមហ៊ុន]
+**[ខែ/ឆ្នាំ] – [ខែ/ឆ្នាំ]**
+
+- ការងារ / សមិទ្ធផល ១
+- ការងារ / សមិទ្ធផល ២
+
+### [តួនាទី] — [ក្រុមហ៊ុន]
+**[ខែ/ឆ្នាំ] – [ខែ/ឆ្នាំ]**
+
+- ការងារ / សមិទ្ធផល ១
+
+---
+
+## ការអប់រំ
+
+| កម្រិត | សាលា / សកលវិទ្យាល័យ | ឆ្នាំ |
+|--------|---------------------|------|
+| Bachelor | _______________ | ____ |
+
+---
+
+## ជំនាញ
+
+- ជំនាញ ១ · ជំនាញ ២ · ជំនាញ ៣
+
+---
+
+## ភាសា
+
+- ខ្មែរ — _______________
+- English — _______________
+`;
+
+export const RESUME_EN = `# Resume / CV
+
+**Name:** _______________  
+**Phone:** _______________  
+**Email:** _______________  
+**LinkedIn / Portfolio:** _______________
+
+---
+
+## Work Experience
+
+### [Job Title] — [Company]
+**[Month/Year] – [Month/Year]**
+
+- Achievement or responsibility 1
+- Achievement or responsibility 2
+
+### [Job Title] — [Company]
+**[Month/Year] – [Month/Year]**
+
+- Achievement or responsibility 1
+
+---
+
+## Education
+
+| Level | School / University | Year |
+|-------|---------------------|------|
+| Bachelor | _______________ | ____ |
+
+---
+
+## Skills
+
+- Skill 1 · Skill 2 · Skill 3
+
+---
+
+## Languages
+
+- Khmer — _______________
+- English — _______________
+`;
+
+export const REPORT_KH = `# របាយការណ៍
+
+**ចំណងជើង:** _______________  
+**កាលបរិច្ឆេទ:** _______________  
+**អ្នករៀបចំ:** _______________  
+**អ្នកទទួល:** _______________
+
+---
+
+## ១. សេចក្តីសង្ខេប (Executive Summary)
+
+សរសេរសង្ខេប ២–៣ បន្ទះ...
+
+---
+
+## ២. របត់ការងារ / លទ្ធផល
+
+| ល.រ. | ការងារ | ស្ថានភាព | កំណត់សម្គាល់ |
+|------|--------|----------|-------------|
+| ១ | | ✅ / ⏳ | |
+| ២ | | ✅ / ⏳ | |
+
+---
+
+## ៣. ទិន្នន័យ & ការវិភាគ
+
+- ចំណុចសំខាន់ ១
+- ចំណុចសំខាន់ ២
+
+---
+
+## ៤. បញ្ហា & ដំណោះស្រាយ
+
+| បញ្ហា | ដំណោះស្រាយ | រយៈពេល |
+|-------|------------|---------|
+| | | |
+
+---
+
+## ៥. ផែនការបន្ត
+
+1. ជំហាន ១
+2. ជំហាន ២
+3. ជំហាន ៣
+
+---
+
+## ៦. សេចក្តីសន្និដ្ឋាន
+
+...
+`;
+
+export const REPORT_EN = `# Report
+
+**Title:** _______________  
+**Date:** _______________  
+**Prepared by:** _______________  
+**Recipient:** _______________
+
+---
+
+## 1. Executive Summary
+
+Write a brief 2–3 paragraph overview...
+
+---
+
+## 2. Progress / Results
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1 | | ✅ / ⏳ | |
+| 2 | | ✅ / ⏳ | |
+
+---
+
+## 3. Data & Analysis
+
+- Key point 1
+- Key point 2
+
+---
+
+## 4. Issues & Solutions
+
+| Issue | Solution | Timeline |
+|-------|----------|----------|
+| | | |
+
+---
+
+## 5. Next Steps
+
+1. Step 1
+2. Step 2
+3. Step 3
+
+---
+
+## 6. Conclusion
+
+...
+`;
+
+export const PROJECT_KH = `# គម្រោង — [ឈ្មោះគម្រោង]
+
+**គម្រោង:** _______________  
+**ក្រុម / អ្នកទទួលខុសត្រូវ:** _______________  
+**រយៈពេល:** _______________ → _______________  
+**ស្ថានភាព:** 🟢 កំពុងដំណើរការ / 🟡 រង់ចាំ / 🔴 យឺត
+
+---
+
+## ១. គោលបំណង
+
+- គោលបំណង ១
+- គោលបំណង ២
+
+---
+
+## ២. វិសាលភាព (Scope)
+
+**ក្នុងវិសាលភាព:**
+- ...
+
+**ក្រៅវិសាលភាព:**
+- ...
+
+---
+
+## ៣. Timeline
+
+| ដំណាក់កាល | កាលបរិច្ឆេទ | ស្ថានភាព |
+|-----------|-------------|--------|
+| Kick-off | | |
+| Milestone 1 | | |
+| Delivery | | |
+
+---
+
+## ៤. តួនាទី & ការទទួលខុសត្រូវ
+
+| តួនាទី | ឈ្មោះ | ការងារ |
+|--------|-------|--------|
+| PM | | |
+| Member | | |
+
+---
+
+## ៥. ធនធាន & ថវិកា
+
+- ធនធាន: ...
+- ថវិកា (បើមាន): ...
+
+---
+
+## ៦. ហានិភ័យ & ការគ្រប់គ្រង
+
+| ហានិភ័យ | ផលប៉ះពាល់ | វិធានការការពារ |
+|---------|-----------|----------------|
+| | | |
+
+---
+
+## ៧. ឯកសារភ្ជាប់
+
+- [ ] Proposal
+- [ ] Design
+- [ ] Final deliverable
+`;
+
+export const PROJECT_EN = `# Project — [Project Name]
+
+**Project:** _______________  
+**Team / Owner:** _______________  
+**Timeline:** _______________ → _______________  
+**Status:** 🟢 In progress / 🟡 On hold / 🔴 Delayed
+
+---
+
+## 1. Objectives
+
+- Objective 1
+- Objective 2
+
+---
+
+## 2. Scope
+
+**In scope:**
+- ...
+
+**Out of scope:**
+- ...
+
+---
+
+## 3. Timeline
+
+| Phase | Date | Status |
+|-------|------|--------|
+| Kick-off | | |
+| Milestone 1 | | |
+| Delivery | | |
+
+---
+
+## 4. Roles & Responsibilities
+
+| Role | Name | Tasks |
+|------|------|-------|
+| PM | | |
+| Member | | |
+
+---
+
+## 5. Resources & Budget
+
+- Resources: ...
+- Budget (if any): ...
+
+---
+
+## 6. Risks & Mitigation
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| | | |
+
+---
+
+## 7. Attachments
+
+- [ ] Proposal
+- [ ] Design
+- [ ] Final deliverable
+`;
+
+export const LESSON_PLAN_KH = `# សឥ្ធាកម្មមេរៀន
+
+**មុខវិជ្ជា:** _______________  
+**ថ្នាក់:** _______________  
+**រយៈពេល:** ___ ម៉ោង  
+**គ្រូ:** _______________  
+**កាលបរិច្ឆេទ:** _______________
+
+---
+
+## ១. គោលបំណងសិក្សា
+
+1. សិស្សអាច...
+2. សិស្សអាច...
+
+---
+
+## ២. សម្ភារ & ឧបករណ៍
+
+- ...
+- ...
+
+---
+
+## ៣. សកម្មភាព (Activities)
+
+| ពេលវេលា | សកម្មភាព | វិធីសាស្ត្រ |
+|---------|---------|------------|
+| ៥ នាទី | Warm-up | |
+| ២០ នាទី | បង្រៀន | |
+| ១៥ នាទី | អនុវត្ត | |
+| ៥ នាទី | Wrap-up | |
+
+---
+
+## ៤. ការវាយតម្លៃ
+
+- ...
+`;
+
+export const LESSON_PLAN_EN = `# Lesson Plan
+
+**Subject:** _______________  
+**Grade:** _______________  
+**Duration:** ___ hours  
+**Teacher:** _______________  
+**Date:** _______________
+
+---
+
+## 1. Learning Objectives
+
+1. Students will be able to...
+2. Students will be able to...
+
+---
+
+## 2. Materials
+
+- ...
+- ...
+
+---
+
+## 3. Activities
+
+| Time | Activity | Method |
+|------|----------|--------|
+| 5 min | Warm-up | |
+| 20 min | Instruction | |
+| 15 min | Practice | |
+| 5 min | Wrap-up | |
+
+---
+
+## 4. Assessment
+
+- ...
+`;
+
+export const MEETING_KH = `# កំណត់ត្រាប្រជុំ
+
+**ប្រធានបទ:** _______________  
+**កាលបរិច្ឆេទ:** _______________  
+**ទីតាំង / Online:** _______________  
+**អ្នកចូលរួម:** _______________
+
+---
+
+## របៀបវារៈ
+
+1. ...
+2. ...
+3. ...
+
+---
+
+## កំណត់ត្រា
+
+| ល.រ. | ប្រធានបទ | សេចក្តីសម្រេច | អ្នកទទួលខុសត្រូវ | កាលបរិច្ឆេទ |
+|------|----------|--------------|----------------|-------------|
+| ១ | | | | |
+| ២ | | | | |
+
+---
+
+## Action Items
+
+- [ ] ...
+- [ ] ...
+`;
+
+export const MEETING_EN = `# Meeting Notes
+
+**Topic:** _______________  
+**Date:** _______________  
+**Location / Online:** _______________  
+**Attendees:** _______________
+
+---
+
+## Agenda
+
+1. ...
+2. ...
+3. ...
+
+---
+
+## Notes
+
+| # | Topic | Decision | Owner | Due |
+|---|-------|----------|-------|-----|
+| 1 | | | | |
+| 2 | | | | |
+
+---
+
+## Action Items
+
+- [ ] ...
+- [ ] ...
+`;
+
+export type MarkdownTemplateId =
+  | 'blank'
+  | 'sql'
+  | 'quiz'
+  | 'homework'
+  | 'resume'
+  | 'report'
+  | 'project'
+  | 'lesson-plan'
+  | 'meeting';
 
 const TEMPLATE_BY_LANG: Record<MarkdownTemplateId, { kh: string; en: string }> = {
   blank: { kh: BLANK_LESSON_KH, en: BLANK_LESSON_EN },
   sql: { kh: SQL_LESSON_KH, en: SQL_LESSON_EN },
   quiz: { kh: QUIZ_LESSON_KH, en: QUIZ_LESSON_EN },
   homework: { kh: HOMEWORK_KH, en: HOMEWORK_EN },
+  resume: { kh: RESUME_KH, en: RESUME_EN },
+  report: { kh: REPORT_KH, en: REPORT_EN },
+  project: { kh: PROJECT_KH, en: PROJECT_EN },
+  'lesson-plan': { kh: LESSON_PLAN_KH, en: LESSON_PLAN_EN },
+  meeting: { kh: MEETING_KH, en: MEETING_EN },
 };
 
 export function getMarkdownTemplate(id: MarkdownTemplateId, lang: 'kh' | 'en'): string {

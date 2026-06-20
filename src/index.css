@@ -12,6 +12,7 @@
 @layer base {
   html {
     font-family: var(--font-sans);
+    font-size: 18px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -74,7 +75,7 @@
     padding: 12px 16px;
     text-align: left;
     font-weight: 700;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-slate-600);
@@ -83,7 +84,7 @@
 
   .prose td {
     padding: 12px 16px;
-    font-size: 0.9375rem;
+    font-size: 1rem;
     color: var(--color-slate-700);
     border-bottom: 1px solid var(--color-slate-100);
     background-color: white;
