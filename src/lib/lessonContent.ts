@@ -16,6 +16,12 @@ export function isHtmlContent(content: string): boolean {
 
 function htmlBrBlobToMarkdown(html: string): string {
   return html
+    .replace(/<\/h([1-6])>\s*<h\1[^>]*>/gi, '\n')
+    .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, lvl, inner) => {
+      const level = Number(lvl);
+      const plain = inner.replace(/<[^>]+>/g, '').trim();
+      return `\n\n${'#'.repeat(level)} ${plain}\n\n`;
+    })
     .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/&nbsp;/gi, ' ')
@@ -28,6 +34,30 @@ function htmlBrBlobToMarkdown(html: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function hasNumberedSectionOutline(text: string): boolean {
+  const normalized = khmerDigitsToAscii(text);
+  return (normalized.match(/^\d+\.\s+[A-Z\u1780-\u17FF&]/gm) || []).length >= 1;
+}
+
+/** Split glued feature paragraphs: "Sign up. Profile mgmt. Multi-event..." */
+function splitGluedFeatureLines(line: string): string[] {
+  const trimmed = line.trim();
+  if (trimmed.length < 100) return [trimmed];
+
+  if (/\*\*[^*\n]{1,50}\*\*/.test(trimmed)) {
+    const parts = trimmed.split(/\s+(?=\*\*[^*]+\*\*)/).map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  const bySentence = trimmed
+    .split(/(?<=[.!?])\s+(?=[A-Z*(\[])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (bySentence.length > 1) return bySentence;
+
+  return [trimmed];
 }
 
 /** Lines like "1. User & Account Management" are section titles, not list items. */
@@ -99,9 +129,11 @@ export function structurePlainLessonText(raw: string): string {
       continue;
     }
 
-    // Lines under a numbered section → bullet points
-    if (afterSection && trimmed.length < 220) {
-      out.push(`- ${trimmed}`);
+    // Lines under a numbered section → bullet points (including glued paragraphs)
+    if (afterSection) {
+      for (const piece of splitGluedFeatureLines(trimmed)) {
+        out.push(`- ${piece}`);
+      }
       continue;
     }
 
@@ -118,6 +150,15 @@ function plainTextNeedsStructure(text: string): boolean {
   if (/[០-៩]|[។]/.test(trimmed)) return true;
   if (/^\d+\.\d+/m.test(khmerDigitsToAscii(trimmed))) return true;
   if (/^•\s+/m.test(trimmed)) return true;
+
+  const normalized = khmerDigitsToAscii(trimmed);
+  const firstLine = trimmed.split('\n').find((l) => l.trim())?.replace(/^#{1,6}\s+/, '') || '';
+  if (/^\d+\.\s+\S/m.test(normalized) && isNumberedSectionHeader(firstLine)) return true;
+
+  const sectionCount = (normalized.match(/^\d+\.\s+[A-Z\u1780-\u17FF&]/gm) || []).length;
+  if (sectionCount >= 2) return true;
+  if (sectionCount >= 1 && !/^\s*[-*]\s/m.test(trimmed)) return true;
+
   // Many short lines without list markers
   const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
   const shortLines = lines.filter((l) => l.length > 0 && l.length < 100 && !/^[-*#]/.test(l));
@@ -152,7 +193,7 @@ export function normalizeImportedMarkdown(raw: string): string {
   text = text.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
   text = text.replace(/\n{3,}/g, '\n\n');
 
-  if (plainTextNeedsStructure(text)) {
+  if (plainTextNeedsStructure(text) || hasNumberedSectionOutline(text)) {
     text = structurePlainLessonText(text);
   }
 
@@ -204,6 +245,11 @@ export function needsLessonFormatting(content: string): boolean {
     return false;
   }
 
+  if (/<h[1-6][\s>]/i.test(raw) && !/<[uo]l[\s>]/i.test(raw)) {
+    const plain = htmlBrBlobToMarkdown(raw);
+    if (hasNumberedSectionOutline(plain) && !/^\s*[-*]\s/m.test(plain)) return true;
+  }
+
   if (/<h[1-6][\s>]/i.test(raw) && !plainTextHasMarkdownSyntax(plain)) {
     return false;
   }
@@ -251,6 +297,10 @@ export function repairContentForRender(content: string): string {
 
   const plain = htmlBrBlobToMarkdown(raw);
   if (plainTextHasMarkdownSyntax(plain)) return normalizeImportedMarkdown(plain);
+  if (needsLessonFormatting(raw)) {
+    const md = normalizeImportedMarkdown(plain);
+    if (md) return md;
+  }
   if (looksLikeCodeBlock(plain) && !plain.includes('```')) {
     return wrapAsMarkdownCodeFence(plain, detectCodeLanguage(plain));
   }

@@ -414,6 +414,9 @@ export function Editor({
         if (looksLikeCodeBlock(plain)) {
           return `${buildEditorCodeBlockHtml(plain, detectCodeLanguage(plain))}<p><br></p>`;
         }
+        if (needsLessonFormatting(recovered)) {
+          return formatLessonContent(recovered);
+        }
         return recovered;
       }
     }
@@ -513,6 +516,12 @@ export function Editor({
       editorRef.current.innerHTML = normalized;
       sanitizeEditorDom(editorRef.current);
       decorateCodeBlocks(editorRef.current);
+      if (normalized && normalized !== (initialContent || '').trim()) {
+        setContent(normalized);
+        setHistory([normalized]);
+        historyIndexRef.current = 0;
+        historyRef.current = [normalized];
+      }
     }
   }, [lessonId, contentReloadKey, initialTitle, initialContent]);
 

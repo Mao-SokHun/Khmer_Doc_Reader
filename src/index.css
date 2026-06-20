@@ -110,6 +110,34 @@
     columns: auto !important;
   }
 
+  .editor-paper .editor-surface :where(h1, h2, h3, h4, h5, h6) {
+    margin-top: 1.25em;
+    margin-bottom: 0.5em;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .editor-paper .editor-surface :where(p) {
+    margin: 0.65em 0;
+  }
+
+  .editor-paper .editor-surface :where(ul, ol) {
+    margin: 0.75em 0;
+    padding-left: 1.75em;
+  }
+
+  .editor-paper .editor-surface :where(li) {
+    margin: 0.35em 0;
+  }
+
+  .editor-paper .editor-surface :where(ul) {
+    list-style-type: disc;
+  }
+
+  .editor-paper .editor-surface :where(ol) {
+    list-style-type: decimal;
+  }
+
   /* Legacy editor inline colors — skip live editor surface to avoid breaking caret */
   .dark .editor-paper .editor-surface [style*="color"] {
     color: rgb(241 245 249) !important;
