@@ -144,28 +144,28 @@
   }
 
   /* Body text under headings — indent inward, not flush with title */
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-under-heading[data-section-depth='1'] {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-under-heading[data-section-depth='1'] {
     margin-inline-start: 2rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-under-heading[data-section-depth='2'] {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-under-heading[data-section-depth='2'] {
     margin-inline-start: 2.25rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-under-heading[data-section-depth='3'] {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-under-heading[data-section-depth='3'] {
     margin-inline-start: 2.5rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-under-heading[data-section-depth='4'] {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-under-heading[data-section-depth='4'] {
     margin-inline-start: 2.75rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-under-heading[data-section-depth='5'],
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-under-heading[data-section-depth='6'] {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-under-heading[data-section-depth='5'],
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-under-heading[data-section-depth='6'] {
     margin-inline-start: 3rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-subheading {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-subheading {
     margin-inline-start: 2.5rem;
     font-weight: 600;
     margin-top: 0.85em;
@@ -173,27 +173,27 @@
     list-style-position: outside;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-subheading[data-section-depth='3'] {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-subheading[data-section-depth='3'] {
     margin-inline-start: 2.75rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-subheading[data-section-depth='4'],
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-subheading[data-section-depth='5'],
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-subheading[data-section-depth='6'] {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-subheading[data-section-depth='4'],
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-subheading[data-section-depth='5'],
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-subheading[data-section-depth='6'] {
     margin-inline-start: 3.25rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose) .doc-under-subheading {
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export) .doc-under-subheading {
     margin-inline-start: 3.75rem !important;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose)
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export)
     :is(h1, h2, h3, h4, h5, h6)
     ~ :is(p, ul, ol).doc-under-heading {
     margin-inline-start: 2.25rem;
   }
 
-  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose)
+  .khmer-doc-font :is(.editor-surface, .doc-viewer-html, .prose, #document-to-export)
     :is(h1, h2, h3, h4, h5, h6)
     + :is(p, ul, ol):not(.doc-under-heading):not(.doc-subheading) {
     margin-inline-start: 2.25rem;

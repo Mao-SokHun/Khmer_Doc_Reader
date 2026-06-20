@@ -134,6 +134,65 @@ export function buildPdfShellStyles(v: PdfStyleVars): string {
   `;
 }
 
+/** Heading body indent — must match on-screen `.doc-under-heading` rules in index.css. */
+export function buildPdfIndentStyles(): string {
+  return `
+    #content .doc-under-heading[data-section-depth='1'],
+    #content .doc-viewer-html .doc-under-heading[data-section-depth='1'] {
+      margin-inline-start: 2rem;
+    }
+    #content .doc-under-heading[data-section-depth='2'],
+    #content .doc-viewer-html .doc-under-heading[data-section-depth='2'] {
+      margin-inline-start: 2.25rem;
+    }
+    #content .doc-under-heading[data-section-depth='3'],
+    #content .doc-viewer-html .doc-under-heading[data-section-depth='3'] {
+      margin-inline-start: 2.5rem;
+    }
+    #content .doc-under-heading[data-section-depth='4'],
+    #content .doc-viewer-html .doc-under-heading[data-section-depth='4'] {
+      margin-inline-start: 2.75rem;
+    }
+    #content .doc-under-heading[data-section-depth='5'],
+    #content .doc-under-heading[data-section-depth='6'],
+    #content .doc-viewer-html .doc-under-heading[data-section-depth='5'],
+    #content .doc-viewer-html .doc-under-heading[data-section-depth='6'] {
+      margin-inline-start: 3rem;
+    }
+    #content .doc-subheading,
+    #content .doc-viewer-html .doc-subheading {
+      margin-inline-start: 2.5rem;
+      font-weight: 600;
+      margin-top: 0.85em;
+      margin-bottom: 0.15em;
+    }
+    #content .doc-subheading[data-section-depth='3'],
+    #content .doc-viewer-html .doc-subheading[data-section-depth='3'] {
+      margin-inline-start: 2.75rem;
+    }
+    #content .doc-subheading[data-section-depth='4'],
+    #content .doc-subheading[data-section-depth='5'],
+    #content .doc-subheading[data-section-depth='6'],
+    #content .doc-viewer-html .doc-subheading[data-section-depth='4'],
+    #content .doc-viewer-html .doc-subheading[data-section-depth='5'],
+    #content .doc-viewer-html .doc-subheading[data-section-depth='6'] {
+      margin-inline-start: 3.25rem;
+    }
+    #content .doc-under-subheading,
+    #content .doc-viewer-html .doc-under-subheading {
+      margin-inline-start: 3.75rem !important;
+    }
+    #content :is(h1, h2, h3, h4, h5, h6) ~ :is(p, ul, ol).doc-under-heading,
+    #content .doc-viewer-html :is(h1, h2, h3, h4, h5, h6) ~ :is(p, ul, ol).doc-under-heading {
+      margin-inline-start: 2.25rem;
+    }
+    #content :is(h1, h2, h3, h4, h5, h6) + :is(p, ul, ol):not(.doc-under-heading):not(.doc-subheading),
+    #content .doc-viewer-html :is(h1, h2, h3, h4, h5, h6) + :is(p, ul, ol):not(.doc-under-heading):not(.doc-subheading) {
+      margin-inline-start: 2.25rem;
+    }
+  `;
+}
+
 /** Lesson body rules for stable PDF layout (tables, code, math, lists). */
 export function buildPdfContentStyles(v: PdfStyleVars): string {
   const { basePdfSize, h1PdfSize, h2PdfSize, h3PdfSize } = v;
@@ -324,6 +383,7 @@ export function buildPdfContentStyles(v: PdfStyleVars): string {
     [data-export-code-block] pre code span[style] {
       background: transparent;
     }
+    ${buildPdfIndentStyles()}
   `;
 }
 
