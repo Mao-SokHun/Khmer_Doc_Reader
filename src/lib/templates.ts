@@ -2,12 +2,17 @@ import {
   getMarkdownTemplate,
   type MarkdownTemplateId,
 } from './markdownTemplates';
+import {
+  CODE_TEMPLATE_DEFS,
+  type CodeSubcategory,
+} from './codeLessonTemplates';
 
 export type TemplateCategory = 'code' | 'document' | 'lesson' | 'general';
 
 export type LessonTemplate = {
   id: MarkdownTemplateId;
   category: TemplateCategory;
+  codeSubcategory?: CodeSubcategory;
   titleKh: string;
   titleEn: string;
   descKh?: string;
@@ -25,7 +30,7 @@ export const TEMPLATE_CATEGORIES: Array<{
   { id: 'general', labelKh: 'ទូទៅ', labelEn: 'General' },
 ];
 
-export const LESSON_TEMPLATES: LessonTemplate[] = [
+const STATIC_TEMPLATES: LessonTemplate[] = [
   {
     id: 'code-doc',
     category: 'code',
@@ -106,6 +111,22 @@ export const LESSON_TEMPLATES: LessonTemplate[] = [
     descKh: 'ចាប់ផ្ដើមពីទទេ',
     descEn: 'Start from scratch',
   },
+];
+
+const CODE_TEMPLATES: LessonTemplate[] = CODE_TEMPLATE_DEFS.map((def) => ({
+  id: def.id,
+  category: 'code' as const,
+  codeSubcategory: def.subcategory,
+  titleKh: def.titleKh,
+  titleEn: def.titleEn,
+  descKh: def.descKh,
+  descEn: def.descEn,
+}));
+
+export const LESSON_TEMPLATES: LessonTemplate[] = [
+  ...STATIC_TEMPLATES.filter((t) => t.category === 'code'),
+  ...CODE_TEMPLATES,
+  ...STATIC_TEMPLATES.filter((t) => t.category !== 'code'),
 ];
 
 export function getTemplateContent(template: LessonTemplate, lang: 'kh' | 'en'): string {

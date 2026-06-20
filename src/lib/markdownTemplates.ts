@@ -1,4 +1,9 @@
 /** Clean Markdown lesson templates — no HTML, code blocks outside lists. */
+import {
+  buildCodeLessonMarkdown,
+  getCodeTemplateDef,
+  isCodeTemplateId,
+} from './codeLessonTemplates';
 
 export const BLANK_LESSON_KH = `# ម្ខាស់ចំណងជើងមេរៀន
 
@@ -994,7 +999,8 @@ export type MarkdownTemplateId =
   | 'report'
   | 'project'
   | 'lesson-plan'
-  | 'meeting';
+  | 'meeting'
+  | import('./codeLessonTemplates').CodeTemplateId;
 
 const TEMPLATE_BY_LANG: Record<MarkdownTemplateId, { kh: string; en: string }> = {
   blank: { kh: BLANK_LESSON_KH, en: BLANK_LESSON_EN },
@@ -1010,5 +1016,9 @@ const TEMPLATE_BY_LANG: Record<MarkdownTemplateId, { kh: string; en: string }> =
 };
 
 export function getMarkdownTemplate(id: MarkdownTemplateId, lang: 'kh' | 'en'): string {
-  return TEMPLATE_BY_LANG[id][lang];
+  if (isCodeTemplateId(id)) {
+    const def = getCodeTemplateDef(id);
+    if (def) return buildCodeLessonMarkdown(def, lang);
+  }
+  return TEMPLATE_BY_LANG[id as keyof typeof TEMPLATE_BY_LANG][lang];
 }
