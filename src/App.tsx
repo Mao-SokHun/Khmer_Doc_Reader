@@ -853,11 +853,6 @@ export default function App() {
 
   const formatActiveLesson = async () => {
     if (!activeLesson || isFormattingLesson) return;
-    const aiOn = await isGeminiConfigured();
-    if (!aiOn && !needsLessonFormatting(activeLesson.content)) {
-      alert(t.formatLessonNone);
-      return;
-    }
 
     setIsFormattingLesson(true);
     try {

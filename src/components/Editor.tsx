@@ -1333,10 +1333,6 @@ export function Editor({
     if (!editor || formatLessonBusy) return;
 
     const current = editor.innerHTML;
-    if (!(await isGeminiConfigured()) && !needsLessonFormatting(current)) {
-      alert(ui.formatLessonNone);
-      return;
-    }
 
     setFormatLessonBusy(true);
     try {

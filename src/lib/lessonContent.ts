@@ -8,6 +8,7 @@ import {
   looksLikeMarkdownDocument,
   wrapAsMarkdownCodeFence,
 } from './codeFormat';
+import { formatAcademicDocument, khmerDigitsToAscii, splitKhmerSentences, shouldSplitAsParagraphBlock } from './academicDocFormat';
 
 export function isHtmlContent(content: string): boolean {
   return /<\/?[a-z][\s\S]*>/i.test((content || '').trim());
@@ -31,13 +32,13 @@ function htmlBrBlobToMarkdown(html: string): string {
 
 /** Lines like "1. User & Account Management" are section titles, not list items. */
 function isNumberedSectionHeader(line: string): boolean {
-  const m = line.trim().match(/^(\d+)\.\s+(.+)$/);
+  const normalized = khmerDigitsToAscii(line.trim());
+  const m = normalized.match(/^(\d+(?:\.\d+)*)\.\s+(.+)$/);
   if (!m) return false;
   const title = m[2].trim();
-  if (!title || title.length > 140) return false;
+  if (!title || title.length > 160) return false;
   if (/^[-*•]\s/.test(title)) return false;
-  // Skip lines that read like sentence steps inside a paragraph
-  if (/^[a-z]/.test(title) && title.split(/\s+/).length > 12) return false;
+  if (/^[a-z]/.test(title) && title.split(/\s+/).length > 14) return false;
   return true;
 }
 
@@ -62,9 +63,20 @@ export function structurePlainLessonText(raw: string): string {
     }
 
     if (isNumberedSectionHeader(trimmed)) {
-      const m = trimmed.match(/^(\d+)\.\s+(.+)$/)!;
-      out.push(`## ${m[1]}. ${m[2].trim()}`);
+      const normalized = khmerDigitsToAscii(trimmed);
+      const m = normalized.match(/^(\d+(?:\.\d+)*)\.\s+(.+)$/)!;
+      const level = Math.min(4, m[1].split('.').length + 1);
+      out.push(`${'#'.repeat(level)} ${m[1]}. ${m[2].trim()}`);
       afterSection = true;
+      continue;
+    }
+
+    if (shouldSplitAsParagraphBlock(trimmed)) {
+      for (const sentence of splitKhmerSentences(trimmed)) {
+        out.push(sentence);
+        out.push('');
+      }
+      afterSection = false;
       continue;
     }
 
@@ -103,11 +115,8 @@ export function structurePlainLessonText(raw: string): string {
 function plainTextNeedsStructure(text: string): boolean {
   const trimmed = (text || '').trim();
   if (!trimmed) return false;
-  if (/^\d+\.\s+\S/m.test(trimmed) && isNumberedSectionHeader(trimmed.split('\n').find((l) => l.trim()) || '')) {
-    return true;
-  }
-  const sectionCount = (trimmed.match(/^\d+\.\s+[A-Z\u1780-\u17FF]/gm) || []).length;
-  if (sectionCount >= 2) return true;
+  if (/[០-៩]|[។]/.test(trimmed)) return true;
+  if (/^\d+\.\d+/m.test(khmerDigitsToAscii(trimmed))) return true;
   if (/^•\s+/m.test(trimmed)) return true;
   // Many short lines without list markers
   const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -117,14 +126,17 @@ function plainTextNeedsStructure(text: string): boolean {
   }
   return false;
 }
-
-/** Clean messy MD/HTML (Google Docs paste, broken imports) into readable Markdown. */
 export function normalizeImportedMarkdown(raw: string): string {
   let text = (raw || '').trim();
   if (!text) return '';
 
   if (isHtmlContent(text) && (text.includes('<br') || text.includes('<span') || text.includes('<div'))) {
     text = htmlBrBlobToMarkdown(text);
+  }
+
+  // Academic Khmer docs: sentence breaks, ១.១. outlines
+  if (/[០-៩]|[។]|\u17D4/.test(text) || /^\d+\.\d+/m.test(khmerDigitsToAscii(text))) {
+    text = formatAcademicDocument(text);
   }
 
   // Un-indent fenced code blocks that were nested under list items
@@ -507,12 +519,14 @@ export function markdownToEditorHtml(value: string): string {
       continue;
     }
 
-    // "1. Section Title" as standalone line → heading (not ordered list)
-    const numberedSection = line.match(/^(\d+)\.\s+(.+)$/);
+    // "1.1. Section" or "១.១. Section" → heading (not ordered list)
+    const normalizedLine = khmerDigitsToAscii(line.trim());
+    const numberedSection = normalizedLine.match(/^(\d+(?:\.\d+)*)\.\s+(.+)$/);
     if (numberedSection && isNumberedSectionHeader(line)) {
       closeList();
+      const level = Math.min(6, numberedSection[1].split('.').length + 1);
       const text = numberedSection[2].replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-      out.push(`<h2>${numberedSection[1]}. ${text}</h2>`);
+      out.push(`<h${level}>${numberedSection[1]}. ${text}</h${level}>`);
       continue;
     }
 
