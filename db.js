@@ -1,4 +1,6 @@
-import { Pool } from 'pg';
+import pg from 'pg';
+import { neonConfig, Pool as NeonPool } from '@neondatabase/serverless';
+import ws from 'ws';
 
 function shouldUseSsl(connectionString) {
   if (process.env.PGSSLMODE === 'disable') return false;
@@ -16,27 +18,47 @@ function normalizeDatabaseUrl(connectionString) {
   return url.replace(/@(ep-[^./?]+)\./, '@$1-pooler.');
 }
 
+function withNeonServerlessCompat(connectionString) {
+  let url = connectionString;
+  if (!/[?&]sslmode=/.test(url)) {
+    url += `${url.includes('?') ? '&' : '?'}sslmode=require`;
+  }
+  if (!/[?&]uselibpqcompat=/.test(url)) {
+    url += '&uselibpqcompat=true';
+  }
+  return url;
+}
+
 export function createPool() {
   const databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (databaseUrl) {
-    const connectionString = normalizeDatabaseUrl(databaseUrl);
+    const connectionString = withNeonServerlessCompat(normalizeDatabaseUrl(databaseUrl));
     const ssl = shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined;
-    return new Pool({
+
+    if (process.env.VERCEL && connectionString.includes('neon.tech')) {
+      neonConfig.webSocketConstructor = ws;
+      return new NeonPool({
+        connectionString,
+        max: Number(process.env.PGPOOL_MAX || 1),
+      });
+    }
+
+    return new pg.Pool({
       connectionString,
       ssl,
-      max: Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 1 : 10)),
-      idleTimeoutMillis: process.env.VERCEL ? 5_000 : 30_000,
-      connectionTimeoutMillis: process.env.VERCEL ? 10_000 : 15_000,
+      max: Number(process.env.PGPOOL_MAX || 10),
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 15_000,
     });
   }
 
-  return new Pool({
+  return new pg.Pool({
     host: process.env.PGHOST || 'localhost',
     port: Number(process.env.PGPORT || 5432),
     database: process.env.PGDATABASE || 'postgres',
     user: process.env.PGUSER || 'postgres',
     password: process.env.PGPASSWORD || '',
-    max: Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 1 : 10)),
+    max: Number(process.env.PGPOOL_MAX || 10),
   });
 }
