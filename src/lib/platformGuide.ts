@@ -1,12 +1,12 @@
-export const PLATFORM_GUIDE_VERSION = 'platform-v3';
+export const PLATFORM_GUIDE_VERSION = 'platform-v4';
 
-export const PLATFORM_GUIDE_KH = `# 📘 មគ្គុទ្ទេសក៍ប្រើប្រាស់ Khmer Doc Reader
+export const PLATFORM_GUIDE_KH = `# មគ្គុទ្ទេសក៍ប្រើប្រាស់ Khmer Doc Reader
 
 ឯកសារនេះពន្យល់ **ជំហានមួយ​រួម​មួយ** របៀបប្រើប្រាស់ platform សម្រាប់គ្រូ និងអ្នកសរសេរមេរៀន។
 
 ---
 
-## 1️⃣ ចាប់ផ្ដើម — ទំព័រដើម
+## 1. ចាប់ផ្ដើម — ទំព័រដើម
 
 1. បើកគេហទំព័រ → ឃើញ **ទំព័រដើម** (Home) ជាមួយបញ្ជីមេរៀន
 2. **ថយទៅទំព័រដើម** — ពេលកំពុងអានមេរៀន ចុចប៊ូតុង **«ទំព័រដើម»** ខាង Header ខ្ពស់ (ឬចុច **Esc**)
@@ -16,16 +16,17 @@ export const PLATFORM_GUIDE_KH = `# 📘 មគ្គុទ្ទេសក៍ប
 
 ---
 
-## 2️⃣ បង្កើតមេរៀនថ្មី
+## 2. បង្កើតមេរៀនថ្មី
 
 1. ជ្រើស Tab នៅ Sidebar
 2. ចុច **+** បន្ថែមមេរៀន
-3. ជ្រើស **គំរូ (Template)** — ឧ. មេរៀន SQL, Lesson plan, Code block...
-4. ឬបង្កើតមេរៀនទទេ រួចសរសេរខ្លួនឯង
+3. វាយ **ឈ្មោះមេរៀន** ក្នុង modal
+4. ជ្រើស **គំរូ** — ឧ. របាយការណ៍, គម្រោង, សឥ្ធាកម្មមេរៀន
+5. ឬបង្កើតឯកសារទទេ រួចសរសេរខ្លួនឯង
 
 ---
 
-## 3️⃣ កែសម្រួលមេរៀន (Editor)
+## 3. កែសម្រួលមេរៀន (Editor)
 
 1. បើកមេរៀន → ចុច **កែសម្រួល** ឬ **Ctrl+E**
 2. **Toolbar** ខាងលើ — អក្សរ, Heading, List, Code, Table, រូបភាព
@@ -35,7 +36,7 @@ export const PLATFORM_GUIDE_KH = `# 📘 មគ្គុទ្ទេសក៍ប
 
 ---
 
-## 4️⃣ មើល & រុករកមេរៀន
+## 4. មើល & រុករកមេរៀន
 
 1. **View mode** — អានមេរៀនជា Markdown + code highlight
 2. **Outline** (Sidebar) — ចុចចំណងជើង → scroll ទៅផ្នែកនោះ
@@ -44,7 +45,7 @@ export const PLATFORM_GUIDE_KH = `# 📘 មគ្គុទ្ទេសក៍ប
 
 ---
 
-## 5️⃣ ចែករំលែក & ទាញយក
+## 5. ចែករំលែក & ទាញយក
 
 1. **Share** — បង្កើត link មើល read-only (?share=...)
 2. **PDF** — ទាញយក PDF (More menu → Export)
@@ -53,32 +54,32 @@ export const PLATFORM_GUIDE_KH = `# 📘 មគ្គុទ្ទេសក៍ប
 
 ---
 
-## 6️⃣ AI (បើមាន Gemini API key)
+## 6. AI (បើមាន Gemini API key)
 
 1. **Translate** — បកប្រែមេរៀនទៅភាសាផ្សេង
 2. **Generate image** — បង្កើតរូបភាពពី prompt
 
 ---
 
-## 🔟 គំរូឯកសារ (Templates)
+## 7. គំរូឯកសារ (Templates)
 
 មាន **គំរូស្រាប់** សម្រាប់បង្កើតឯកសារលឿន — ចុច **+** បន្ថែមមេរៀន ឬ **គំរូមេរៀន** នៅទំព័រដើម៖
 
 | គំរូ | ប្រើសម្រាប់ |
 |------|------------|
-| **Resume / CV** | របាយការណ៍ជីវភាព បទពិសោធន៍ ការអប់រំ ជំនាញ |
-| **របាយការណ៍** | របាយការណ៍ការងារ លទ្ធផល បញ្ហា ផែនការបន្ត |
-| **គម្រោង** | គម្រោងផ្សេងៗ — timeline តួនាទី ហានិភ័យ |
-| **សឥ្ធាកម្មមេរៀន** | គោលបំណង សកម្មភាព វាយតម្លៃ (សម្រាប់គ្រូ) |
-| **មេរៀន SQL** | Query, UNION, EXCEPT, Functions |
-| **កិច្ចការផ្ទះ / Quiz** | កិច្ចការផ្ទះ ឬមេរៀន + quiz |
-| **កំណត់ត្រាប្រជុំ** | របៀបវារៈ action items |
+| **របាយការណ៍ជីវភាព** | បទពិសោធន៍ ការអប់រំ ជំនាញ |
+| **របាយការណ៍** | របាយការណ៍ការងារ លទ្ធផល ផែនការបន្ត |
+| **គម្រោង** | ផែនការ តួនាទី ហានិភ័យ |
+| **សឥ្ធាកម្មមេរៀន** | គោលបំណង សកម្មភាព វាយតម្លៃ |
+| **មេរៀនភាសា SQL** | សំណួរ SQL |
+| **កិច្ចការផ្ទះ / សំណួរក្រេប** | កិច្ចការផ្ទះ ឬ quiz |
+| **កំណត់ត្រាប្រជុំ** | របៀបវារៈ កិច្ចការ |
 
-**របៀបប្រើ:** ជ្រើស Tab → **+** → ជ្រើសគំរូ → កែសម្រួលខ្លឹមសារ → **រក្សាទុក**
+**របៀបប្រើ:** ជ្រើស Tab → **+** → វាយឈ្មោះ → ជ្រើសគំរូ → **រក្សាទុក**
 
 ---
 
-## ⌨️ Keyboard shortcuts
+## 8. Keyboard shortcuts
 
 | Shortcut | Action |
 |----------|--------|
@@ -88,24 +89,24 @@ export const PLATFORM_GUIDE_KH = `# 📘 មគ្គុទ្ទេសក៍ប
 
 ---
 
-## 💡 Tips
+## 9. Tips
 
 - មិនចាំបាច់ login — ទិន្នន័យរក្សាទុក per browser
-- ប្រើ **Templates** — Resume, របាយការណ៍, គម្រោង, SQL, Lesson plan
+- ប្រើ **Templates** — របាយការណ៍, គម្រោង, SQL, សឥ្ធាកម្មមេរៀន
 - ប្រើ **Outline** សម្រាប់មេរៀនវែង
 
 ---
 
-**ចាប់ផ្ដើមឥឡូវ:** បង្កើត Tab → បន្ថែមមេរៀន → កែសម្រួល → Share ឬ PDF! 🎉
+**ចាប់ផ្ដើមឥឡូវ:** បង្កើត Tab → បន្ថែមមេរៀន → កែសម្រួល → Share ឬ PDF
 `;
 
-export const PLATFORM_GUIDE_EN = `# 📘 Khmer Doc Reader — User Guide
+export const PLATFORM_GUIDE_EN = `# Khmer Doc Reader — User Guide
 
 This document walks you through **step by step** how to use the platform.
 
 ---
 
-## 1️⃣ Getting started — Home
+## 1. Getting started — Home
 
 1. Open the site → see the **Home** dashboard with your lessons
 2. **Back to Home** — while reading a lesson, click the **Home** button in the top header (or press **Esc**)
@@ -115,16 +116,17 @@ This document walks you through **step by step** how to use the platform.
 
 ---
 
-## 2️⃣ Create a new lesson
+## 2. Create a new lesson
 
 1. Select a tab in the sidebar
 2. Click **+** to add a lesson
-3. Pick a **template** (SQL lesson, lesson plan, code block, etc.)
-4. Or start blank and write your own content
+3. Enter the **lesson name** in the modal
+4. Pick a **template** (report, project, lesson plan, etc.)
+5. Or start blank and write your own content
 
 ---
 
-## 3️⃣ Edit a lesson (Editor)
+## 3. Edit a lesson (Editor)
 
 1. Open a lesson → click **Edit** or \`Ctrl+E\`
 2. Use the **toolbar** — fonts, headings, lists, code, tables, images
@@ -134,7 +136,7 @@ This document walks you through **step by step** how to use the platform.
 
 ---
 
-## 4️⃣ View & navigate
+## 4. View & navigate
 
 1. **View mode** — read rendered Markdown with code highlighting
 2. **Outline** (sidebar) — click a heading to jump to that section
@@ -143,7 +145,7 @@ This document walks you through **step by step** how to use the platform.
 
 ---
 
-## 5️⃣ Share & export
+## 5. Share & export
 
 1. **Share** — create a read-only link (\`?share=...\`)
 2. **PDF** — export from the header / More menu
@@ -152,14 +154,14 @@ This document walks you through **step by step** how to use the platform.
 
 ---
 
-## 6️⃣ AI features (when Gemini API key is configured)
+## 6. AI features (when Gemini API key is configured)
 
 1. **Translate** — translate lesson content to another language
 2. **Generate image** — create images from a text prompt
 
 ---
 
-## 🔟 Document templates
+## 7. Document templates
 
 Ready-made **templates** help you create documents quickly — click **+** to add a lesson or **Templates** on the home page:
 
@@ -169,15 +171,15 @@ Ready-made **templates** help you create documents quickly — click **+** to ad
 | **Report** | Progress reports, results, next steps |
 | **Project** | Project plans — timeline, roles, risks |
 | **Lesson plan** | Objectives, activities, assessment (teachers) |
-| **SQL lesson** | Queries, UNION, EXCEPT, functions |
+| **SQL lesson** | SQL queries and operators |
 | **Homework / Quiz** | Assignments or lessons with quiz blocks |
 | **Meeting notes** | Agenda, decisions, action items |
 
-**How to use:** Pick a tab → **+** → choose a template → edit content → **Save**
+**How to use:** Pick a tab → **+** → enter name → choose template → **Save**
 
 ---
 
-## ⌨️ Keyboard shortcuts
+## 8. Keyboard shortcuts
 
 | Shortcut | Action |
 |----------|--------|
@@ -187,15 +189,15 @@ Ready-made **templates** help you create documents quickly — click **+** to ad
 
 ---
 
-## 💡 Tips
+## 9. Tips
 
 - No login required — your workspace is saved per browser
-- Use **Templates** — Resume, Report, Project, SQL, Lesson plan
+- Use **Templates** — Report, Project, SQL, Lesson plan
 - Use the **Outline** for long documents
 
 ---
 
-**Start now:** Create a tab → Add a lesson → Edit → Share or export PDF! 🎉
+**Start now:** Create a tab → Add a lesson → Edit → Share or export PDF
 `;
 
 export function getPlatformGuide(lang: 'kh' | 'en'): string {

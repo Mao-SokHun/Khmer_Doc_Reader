@@ -90,7 +90,7 @@ export const translations = {
     versionHistory: 'ប្រវត្តិឯកសារ',
     versions: 'កំណែឯកសារ',
     guideFolder: 'មគ្គុទ្ទេសក៍',
-    guideTitle: '📘 មគ្គុទ្ទេសក៍ប្រើប្រាស់ Platform',
+    guideTitle: 'មគ្គុទ្ទេសក៍ប្រើប្រាស់ Platform',
     guideContent: PLATFORM_GUIDE_KH,
   },
   en: {
@@ -176,7 +176,7 @@ export const translations = {
     versionHistory: 'Version history',
     versions: 'Versions',
     guideFolder: 'Guide',
-    guideTitle: '📘 Platform User Guide',
+    guideTitle: 'Platform User Guide',
     guideContent: PLATFORM_GUIDE_EN,
   },
 };

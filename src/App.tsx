@@ -196,25 +196,48 @@ export default function App() {
   const loadWorkspace = async (ownerId: string, currentLang: Language) => {
     const versionKey = 'khmer-doc-guide-version';
     let guideLessonId: string | null = null;
-    if (localStorage.getItem(versionKey) !== PLATFORM_GUIDE_VERSION) {
-      await apiFetch('/api/workspace/clear', {
-        method: 'POST',
-        body: JSON.stringify({ ownerId }),
-      });
-      guideLessonId = await seedPlatformGuide(ownerId, currentLang);
-      localStorage.setItem(versionKey, PLATFORM_GUIDE_VERSION);
-    }
 
     const [folderList, lessonList] = await Promise.all([
       apiFetch<Folder[]>(`/api/folders?ownerId=${encodeURIComponent(ownerId)}`),
       apiFetch<Lesson[]>(`/api/lessons?ownerId=${encodeURIComponent(ownerId)}`),
     ]);
 
+    let nextLessons = lessonList;
+
+    if (localStorage.getItem(versionKey) !== PLATFORM_GUIDE_VERSION) {
+      const tr = translations[currentLang];
+      const guideFolder = folderList.find((f) => f.name === tr.guideFolder);
+      const guideLesson = guideFolder
+        ? lessonList.find((l) => l.folderId === guideFolder.id)
+        : undefined;
+
+      if (guideLesson) {
+        const updated = await apiFetch<Lesson>(`/api/lessons/${guideLesson.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title: tr.guideTitle,
+            content: tr.guideContent,
+          }),
+        });
+        nextLessons = lessonList.map((l) => (l.id === updated.id ? updated : l));
+      } else if (folderList.length === 0) {
+        guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+        await loadWorkspace(ownerId, currentLang);
+        return;
+      } else {
+        guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+        await loadWorkspace(ownerId, currentLang);
+        return;
+      }
+
+      localStorage.setItem(versionKey, PLATFORM_GUIDE_VERSION);
+    }
+
     setFolders(folderList);
-    setLessons(lessonList);
+    setLessons(nextLessons);
 
     if (folderList.length === 0) {
-      guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+      await seedPlatformGuide(ownerId, currentLang);
       await loadWorkspace(ownerId, currentLang);
       return;
     }
