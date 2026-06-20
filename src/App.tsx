@@ -48,6 +48,7 @@ import { getTemplateContent } from './lib/templates';
 import type { SearchResult } from './lib/search';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import {
+  buildPdfHeaderMeta,
   buildPdfStyleVars,
   getContinuationPageTopPad,
   waitForPreviewExportReady,
@@ -119,6 +120,8 @@ export default function App() {
     startPage: 1,
     endPage: 1,
     useCustomRange: false,
+    docKicker: '',
+    docTypeValue: '',
   });
   const [totalPages, setTotalPages] = useState(1);
   const [pdfPageSlices, setPdfPageSlices] = useState<PdfPageSlice[]>([
@@ -520,6 +523,16 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (!showExportModal) return;
+    const meta = buildPdfHeaderMeta(lang, activeLesson?.title || '');
+    setExportSettings((s) => ({
+      ...s,
+      docKicker: meta.docKicker,
+      docTypeValue: meta.docTypeValue,
+    }));
+  }, [showExportModal, lang, activeLesson?.id]);
+
+  useEffect(() => {
     if (!showExportModal || !activeLesson) {
       setPdfExportReady(false);
       return;
@@ -593,6 +606,8 @@ export default function App() {
     exportSettings.pageSize,
     exportSettings.orientation,
     exportSettings.margins,
+    exportSettings.docKicker,
+    exportSettings.docTypeValue,
     exportPrintWidth,
     exportPdfStyleVars,
     fontSize,
@@ -1814,6 +1829,10 @@ export default function App() {
                           lang={lang}
                           lessonTitle={activeLesson?.title || ''}
                           styleVars={exportPdfStyleVars}
+                          headerOverrides={{
+                            docKicker: exportSettings.docKicker,
+                            docTypeValue: exportSettings.docTypeValue,
+                          }}
                           pageBreakOffsets={pdfPageSlices.slice(1).map((slice) => slice.offsetY)}
                           continuationTopPad={getContinuationPageTopPad(exportPdfStyleVars)}
                         />
@@ -1851,6 +1870,35 @@ export default function App() {
                   </div>
 
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6 custom-scrollbar">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                        {t.exportDocKicker}
+                      </label>
+                      <input
+                        type="text"
+                        value={exportSettings.docKicker}
+                        onChange={(e) =>
+                          setExportSettings((s) => ({ ...s, docKicker: e.target.value }))
+                        }
+                        placeholder={lang === 'kh' ? 'ឯកសារមេរៀន' : 'Lesson Document'}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                        {t.exportDocType}
+                      </label>
+                      <input
+                        type="text"
+                        value={exportSettings.docTypeValue}
+                        onChange={(e) =>
+                          setExportSettings((s) => ({ ...s, docTypeValue: e.target.value }))
+                        }
+                        placeholder={lang === 'kh' ? 'ឯកសារសិក្សា' : 'Study document'}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+
                     {/* Page Size */}
                     <div className="space-y-4">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">{t.pageSize}</label>

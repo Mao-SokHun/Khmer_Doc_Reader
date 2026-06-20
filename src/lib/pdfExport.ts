@@ -420,14 +420,25 @@ export function escapePdfHtmlText(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function buildPdfHeaderMeta(lang: ExportLang, title: string): PdfHeaderMeta {
+export type PdfHeaderOverrides = {
+  docKicker?: string;
+  docTypeValue?: string;
+};
+
+export function buildPdfHeaderMeta(
+  lang: ExportLang,
+  title: string,
+  overrides?: PdfHeaderOverrides
+): PdfHeaderMeta {
+  const docKickerDefault = lang === 'kh' ? 'ឯកសារមេរៀន' : 'Lesson Document';
+  const docTypeValueDefault = lang === 'kh' ? 'ឯកសារសិក្សា' : 'Study document';
   return {
-    docKicker: lang === 'kh' ? 'ឯកសារមេរៀន' : 'Lesson Document',
+    docKicker: overrides?.docKicker?.trim() || docKickerDefault,
     pdfHeadingTitle: escapePdfHtmlText(title || ''),
     docSubtitle: lang === 'kh' ? 'ឯកសារសិក្សា · យោគលម្អិត' : 'Study reference · Lesson notes',
     docDateLabel: lang === 'kh' ? 'កាលបរិច្ឆេទ' : 'Date',
     docTypeLabel: lang === 'kh' ? 'ប្រភេទ' : 'Type',
-    docTypeValue: lang === 'kh' ? 'ឯកសារសិក្សា' : 'Study document',
+    docTypeValue: overrides?.docTypeValue?.trim() || docTypeValueDefault,
     formattedDate: new Date().toLocaleDateString(lang === 'kh' ? 'km-KH' : 'en-GB', {
       day: 'numeric',
       month: 'long',

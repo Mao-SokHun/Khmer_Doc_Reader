@@ -4,6 +4,7 @@ import {
   buildPdfFontStyles,
   buildPdfHeaderMeta,
   buildPdfShellStyles,
+  type PdfHeaderOverrides,
   type PdfStyleVars,
 } from '../lib/pdfExport';
 import type { ExportLang } from '../lib/lessonContent';
@@ -14,6 +15,7 @@ type PdfExportPreviewProps = {
   lang: ExportLang;
   lessonTitle: string;
   styleVars: PdfStyleVars;
+  headerOverrides?: PdfHeaderOverrides;
   /** Y-offsets where PDF pages break — shown as guides in preview (export uses the same slices). */
   pageBreakOffsets?: number[];
   /** Top padding on continuation pages (page 2+), shown in preview guides. */
@@ -27,10 +29,11 @@ export function PdfExportPreview({
   lang,
   lessonTitle,
   styleVars,
+  headerOverrides,
   pageBreakOffsets = [],
   continuationTopPad = 0,
 }: PdfExportPreviewProps) {
-  const header = buildPdfHeaderMeta(lang, lessonTitle);
+  const header = buildPdfHeaderMeta(lang, lessonTitle, headerOverrides);
   const { printWidth, marginTop, marginH, marginBottom, basePdfSize } = styleVars;
 
   return (
