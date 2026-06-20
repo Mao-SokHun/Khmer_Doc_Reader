@@ -788,8 +788,205 @@ export const MEETING_EN = `# Meeting Notes
 - [ ] ...
 `;
 
+export const CODE_DOC_KH = `# ឯកសារកូដ
+
+**គោលបំណង:** _______________  
+**ភាសា / Framework:** _______________  
+**កាលបរិច្ឆេទ:** _______________
+
+> **របៀបប្រើ:** សរសេរឬ **Paste code (Ctrl+V)** — platform នឹង wrap code block + syntax highlighting ដោយស្វ័យប្រវត្តិ។
+
+---
+
+## 1. បរិយាយ
+
+សរសេរបរិយាយខ្លីអំពី code នេះ...
+
+---
+
+## 2. JavaScript / TypeScript
+
+\`\`\`javascript
+// សរសេរ ឬ paste code នៅទីនេះ
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+
+console.log(greet('World'));
+\`\`\`
+
+---
+
+## 3. Python
+
+\`\`\`python
+# សរសេរ ឬ paste code នៅទីនេះ
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+print(greet("World"))
+\`\`\`
+
+---
+
+## 4. SQL
+
+\`\`\`sql
+-- សរសេរ ឬ paste query នៅទីនេះ
+SELECT id, title, created_at
+FROM lessons
+WHERE owner_id = $1
+ORDER BY created_at DESC
+LIMIT 10;
+\`\`\`
+
+---
+
+## 5. HTML / CSS
+
+\`\`\`html
+<!DOCTYPE html>
+<html lang="km">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ឧទាហរណ៍</title>
+    <style>
+      body { font-family: "Kantumruy Pro", sans-serif; }
+    </style>
+  </head>
+  <body>
+    <h1>សួស្ដី</h1>
+  </body>
+</html>
+\`\`\`
+
+---
+
+## 6. Terminal / Command
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+---
+
+## 7. លទ្ធផល / Output
+
+\`\`\`text
+Hello, World!
+\`\`\`
+
+---
+
+## 8. កំណត់ចំណាំ
+
+- Paste code → auto wrap + highlight
+- ប្តូរភាសា: \`\`\`python, \`\`\`sql, \`\`\`javascript, \`\`\`typescript
+- Share link ឬ Export PDF បន្ទាប់ពីសរសេររួច
+`;
+
+export const CODE_DOC_EN = `# Code Document
+
+**Purpose:** _______________  
+**Language / Framework:** _______________  
+**Date:** _______________
+
+> **How to use:** Write or **paste code (Ctrl+V)** — the platform auto-wraps code blocks with syntax highlighting.
+
+---
+
+## 1. Overview
+
+Brief description of this code...
+
+---
+
+## 2. JavaScript / TypeScript
+
+\`\`\`javascript
+// Write or paste code here
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+
+console.log(greet('World'));
+\`\`\`
+
+---
+
+## 3. Python
+
+\`\`\`python
+# Write or paste code here
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+print(greet("World"))
+\`\`\`
+
+---
+
+## 4. SQL
+
+\`\`\`sql
+-- Write or paste query here
+SELECT id, title, created_at
+FROM lessons
+WHERE owner_id = $1
+ORDER BY created_at DESC
+LIMIT 10;
+\`\`\`
+
+---
+
+## 5. HTML / CSS
+
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Example</title>
+    <style>
+      body { font-family: system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <h1>Hello</h1>
+  </body>
+</html>
+\`\`\`
+
+---
+
+## 6. Terminal / Command
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+---
+
+## 7. Output
+
+\`\`\`text
+Hello, World!
+\`\`\`
+
+---
+
+## 8. Notes
+
+- Paste code → auto wrap + highlight
+- Change language: \`\`\`python, \`\`\`sql, \`\`\`javascript, \`\`\`typescript
+- Share link or export PDF when done
+`;
+
 export type MarkdownTemplateId =
   | 'blank'
+  | 'code-doc'
   | 'sql'
   | 'quiz'
   | 'homework'
@@ -801,6 +998,7 @@ export type MarkdownTemplateId =
 
 const TEMPLATE_BY_LANG: Record<MarkdownTemplateId, { kh: string; en: string }> = {
   blank: { kh: BLANK_LESSON_KH, en: BLANK_LESSON_EN },
+  'code-doc': { kh: CODE_DOC_KH, en: CODE_DOC_EN },
   sql: { kh: SQL_LESSON_KH, en: SQL_LESSON_EN },
   quiz: { kh: QUIZ_LESSON_KH, en: QUIZ_LESSON_EN },
   homework: { kh: HOMEWORK_KH, en: HOMEWORK_EN },

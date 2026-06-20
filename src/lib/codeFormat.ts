@@ -155,6 +155,87 @@ export function hasCodeBlockMarkup(content: string): boolean {
   return /```[\s\S]*?```/.test(content) || /data-code-block-wrap/i.test(content) || /<pre[\s>]/i.test(content);
 }
 
+export type EditorCodeBlockRef = {
+  wrap: HTMLElement | null;
+  lang: string;
+  code: string;
+};
+
+export function readCodeFromPre(pre: HTMLElement): string {
+  const codeEl = pre.querySelector('code');
+  return (codeEl?.textContent ?? pre.textContent ?? '').replace(/\r\n/g, '\n');
+}
+
+export function collectEditorCodeBlocks(editor: HTMLElement): EditorCodeBlockRef[] {
+  const blocks: EditorCodeBlockRef[] = [];
+
+  editor.querySelectorAll('[data-code-block-wrap="true"]').forEach((wrap) => {
+    const pre = wrap.querySelector('pre');
+    if (!pre) return;
+    const lang =
+      wrap.getAttribute('data-code-language') || detectCodeLanguage(readCodeFromPre(pre as HTMLElement));
+    blocks.push({
+      wrap: wrap as HTMLElement,
+      lang,
+      code: readCodeFromPre(pre as HTMLElement),
+    });
+  });
+
+  editor.querySelectorAll('pre[data-code-block="true"]').forEach((pre) => {
+    if (pre.closest('[data-code-block-wrap="true"]')) return;
+    const code = readCodeFromPre(pre as HTMLElement);
+    if (!code.trim()) return;
+    blocks.push({
+      wrap: pre as HTMLElement,
+      lang: detectCodeLanguage(code),
+      code,
+    });
+  });
+
+  return blocks;
+}
+
+export function getActiveEditorCodeBlock(editor: HTMLElement): EditorCodeBlockRef | null {
+  const selection = window.getSelection();
+  const anchor = selection?.anchorNode;
+  if (!anchor) return null;
+
+  const el = anchor.nodeType === Node.ELEMENT_NODE ? (anchor as HTMLElement) : anchor.parentElement;
+  const wrap = el?.closest('[data-code-block-wrap="true"]') as HTMLElement | null;
+  if (wrap) {
+    const pre = wrap.querySelector('pre');
+    if (!pre) return null;
+    return {
+      wrap,
+      lang: wrap.getAttribute('data-code-language') || detectCodeLanguage(readCodeFromPre(pre as HTMLElement)),
+      code: readCodeFromPre(pre as HTMLElement),
+    };
+  }
+
+  const pre = el?.closest('pre[data-code-block="true"], pre') as HTMLElement | null;
+  if (!pre || !pre.closest('[contenteditable="true"], .editor-surface')) return null;
+  const code = readCodeFromPre(pre);
+  if (!code.trim()) return null;
+  return {
+    wrap: pre,
+    lang: detectCodeLanguage(code),
+    code,
+  };
+}
+
+export function replaceEditorCodeBlock(block: EditorCodeBlockRef, formattedCode: string, language: string): void {
+  const lang = language.toLowerCase();
+  if (block.wrap?.getAttribute('data-code-block-wrap') === 'true') {
+    block.wrap.outerHTML = buildEditorCodeBlockHtml(formattedCode, lang);
+    return;
+  }
+  if (block.wrap) {
+    const codeEl = block.wrap.querySelector('code');
+    if (codeEl) codeEl.textContent = formattedCode;
+    else block.wrap.textContent = formattedCode;
+  }
+}
+
 /** Recover markdown wrongly saved inside a single editor code block. */
 export function extractMarkdownFromMisplacedCodeBlock(content: string): string {
   const raw = (content || '').trim();

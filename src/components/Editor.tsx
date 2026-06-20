@@ -1,12 +1,16 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { isHtmlContent, markdownToEditorHtml, normalizeImportedMarkdown, getLessonOutlineHeadings, assignHeadingIdsInDom, findDomHeadingForOutlineId } from '../lib/lessonContent';
+import { isHtmlContent, markdownToEditorHtml, normalizeImportedMarkdown, getLessonOutlineHeadings, assignHeadingIdsInDom, findDomHeadingForOutlineId, formatLessonContent, needsLessonFormatting } from '../lib/lessonContent';
 import {
   buildEditorCodeBlockHtml,
+  collectEditorCodeBlocks,
   detectCodeLanguage,
   extractMarkdownFromMisplacedCodeBlock,
+  getActiveEditorCodeBlock,
   looksLikeCodeBlock,
   looksLikeMarkdownDocument,
+  replaceEditorCodeBlock,
 } from '../lib/codeFormat';
+import { formatSourceCode } from '../lib/prettierFormat';
 import { SQL_LESSON_KH } from '../lib/markdownTemplates';
 import { highlightElement, scrollElementIntoMainView } from '../lib/scrollTo';
 import { 
@@ -65,7 +69,8 @@ import {
   Copy,
   FileText,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Wand2,
 } from 'lucide-react';
 import { DocViewer } from './DocViewer';
 import { cn } from '../lib/utils';
@@ -245,6 +250,17 @@ export function Editor({
     insertTable: isKh ? 'បញ្ចូលតារាង Markdown' : 'Insert markdown table',
     table: isKh ? 'តារាង' : 'Table',
     insertCode: isKh ? 'បញ្ចូលកូដប្លុក' : 'Insert code block',
+    formatCode: isKh ? 'ធ្វើទម្រង់កូដ (Prettier)' : 'Format code (Prettier)',
+    formatCodeHint: isKh
+      ? 'រាប់រៀង code block — cursor ក្នុង block = format block នោះ, បើមិន = format ទាំងអស់ (Shift+Alt+F)'
+      : 'Format code blocks — cursor in block formats that block, else all (Shift+Alt+F)',
+    formatCodeNone: isKh ? 'មិនមាន code block សម្រាប់ format' : 'No code blocks to format',
+    formatCodeDone: isKh ? 'ធ្វើទម្រង់កូដរួចរាល់' : 'Code formatted',
+    formatLesson: isKh ? 'រៀបចំមេរៀន' : 'Format lesson',
+    formatLessonHint: isKh
+      ? 'បម្លែង Markdown (*, **, ```) → Heading, List, Code block ស្អាត'
+      : 'Convert Markdown (*, **, ```) → headings, lists, code blocks',
+    formatLessonNone: isKh ? 'មេរៀននេះរួចសណ្ដាប់ធ្នាប់រួចហើយ' : 'Lesson is already formatted',
     copyMarkdown: isKh ? 'ចម្លង Markdown' : 'Copy markdown',
     alignment: isKh ? 'តម្រឹម' : 'Alignment',
     alignLeft: isKh ? 'តម្រឹមឆ្វេង' : 'Align left',
@@ -314,6 +330,8 @@ export function Editor({
   const [zoom, setZoom] = useState(100);
   const [fontFamily, setFontFamily] = useState('Kantumruy Pro');
   const [showSearch, setShowSearch] = useState(false);
+  const [formatCodeBusy, setFormatCodeBusy] = useState(false);
+  const [formatLessonBusy, setFormatLessonBusy] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTextStyle, setActiveTextStyle] = useState('Normal text');
   const [activeAlignment, setActiveAlignment] = useState<'left' | 'center' | 'right' | 'justify'>('left');
@@ -756,6 +774,12 @@ export function Editor({
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        void runFormatCode();
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         switch (e.key.toLowerCase()) {
           case 's':
@@ -1174,6 +1198,82 @@ export function Editor({
     decorateCodeBlocks(editor);
     updateContent(editor.innerHTML);
     saveCurrentSelection();
+  };
+
+  const runFormatCode = async () => {
+    const editor = editorRef.current;
+    if (!editor || formatCodeBusy) return;
+
+    const activeBlock = getActiveEditorCodeBlock(editor);
+    const blocks = activeBlock ? [activeBlock] : collectEditorCodeBlocks(editor);
+    if (blocks.length === 0) {
+      alert(ui.formatCodeNone);
+      return;
+    }
+
+    setFormatCodeBusy(true);
+    try {
+      const formattedBlocks = await Promise.all(
+        blocks.map(async (block) => {
+          try {
+            const formatted = (await formatSourceCode(block.code, block.lang)).trim();
+            return { ...block, formatted };
+          } catch {
+            return { ...block, formatted: block.code };
+          }
+        })
+      );
+
+      let changed = 0;
+      if (activeBlock) {
+        const next = formattedBlocks[0];
+        if (next.formatted !== next.code.trim()) {
+          replaceEditorCodeBlock(next, next.formatted, next.lang);
+          changed += 1;
+        }
+      } else {
+        const wraps = [...editor.querySelectorAll('[data-code-block-wrap="true"]')] as HTMLElement[];
+        formattedBlocks.forEach((block, index) => {
+          if (block.formatted === block.code.trim()) return;
+          const wrap = wraps[index];
+          if (!wrap) return;
+          wrap.outerHTML = buildEditorCodeBlockHtml(block.formatted, block.lang);
+          changed += 1;
+        });
+      }
+
+      decorateCodeBlocks(editor);
+      updateContent(editor.innerHTML);
+      saveCurrentSelection();
+
+      if (changed === 0) {
+        alert(ui.formatCodeNone);
+      }
+    } finally {
+      setFormatCodeBusy(false);
+    }
+  };
+
+  const runFormatLesson = () => {
+    const editor = editorRef.current;
+    if (!editor || formatLessonBusy) return;
+
+    const current = editor.innerHTML;
+    if (!needsLessonFormatting(current)) {
+      alert(ui.formatLessonNone);
+      return;
+    }
+
+    setFormatLessonBusy(true);
+    try {
+      const formatted = formatLessonContent(current);
+      editor.innerHTML = formatted;
+      decorateCodeBlocks(editor);
+      updateContent(formatted);
+      saveCurrentSelection();
+    } finally {
+      setFormatLessonBusy(false);
+    }
   };
 
   const insertMarkdownTable = (rows: number, cols: number, includeHeader = true) => {
@@ -2118,6 +2218,16 @@ export function Editor({
         <ToolbarButton icon={Undo2} title={ui.undo} onClick={undo} active={historyIndex > 0} />
         <ToolbarButton icon={Redo2} title={ui.redo} onClick={redo} active={historyIndex < history.length - 1} />
         <ToolbarButton icon={Printer} title={ui.print} onClick={() => window.print()} />
+        <ToolbarButton
+          title={ui.formatLessonHint}
+          onClick={runFormatLesson}
+        >
+          {formatLessonBusy ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Sparkles size={16} className="text-amber-500" />
+          )}
+        </ToolbarButton>
         <ToolbarButton icon={SpellCheck} title={ui.spellCheck} active={spellCheckEnabled} onClick={() => setSpellCheckEnabled((s) => !s)} />
         <ToolbarButton icon={Baseline} title={ui.paintFormat} onClick={paintCurrentFormat} />
         <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={ui.paperSize} items={paperSizeItems} id="paperSize" type="list" triggerIcon={FileText} />
@@ -2244,6 +2354,16 @@ export function Editor({
         <ToolbarButton icon={ImageIcon} title={ui.insertImage} onClick={() => setShowImageModal(true)} />
         <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={ui.table} items={tableItems} id="table" />
         <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label="Code" items={codeLanguageItems} id="codeLang" type="list" triggerIcon={Braces} />
+        <ToolbarButton
+          title={ui.formatCodeHint}
+          onClick={() => void runFormatCode()}
+        >
+          {formatCodeBusy ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <Wand2 size={16} />
+          )}
+        </ToolbarButton>
         <ToolbarButton icon={Copy} title={ui.copyMarkdown} onClick={() => copyContentAs('markdown')} />
         
         <ToolbarDivider />
@@ -2408,7 +2528,7 @@ export function Editor({
               onSelect={saveCurrentSelection}
               onBlur={saveCurrentSelection}
               data-placeholder=""
-              className="editor-surface khmer-doc-font w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 dark:text-slate-200 focus:outline-none border-none"
+              className="editor-surface khmer-doc-font w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 dark:text-slate-50 focus:outline-none border-none"
               spellCheck={spellCheckEnabled}
               style={{
                 fontSize: `${fontSize + 5}px`,
@@ -2571,6 +2691,8 @@ export function Editor({
                   [ui.bold, 'Ctrl/Cmd + B'],
                   [ui.italic, 'Ctrl/Cmd + I'],
                   [ui.underline, 'Ctrl/Cmd + U'],
+                  [ui.formatCode, 'Shift + Alt + F'],
+                  [ui.formatLesson, '—'],
                   [ui.toggleShortcuts, 'Ctrl/Cmd + /'],
                 ].map(([name, key]) => (
                   <div key={name} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">

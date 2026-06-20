@@ -31,7 +31,8 @@ import {
   FileDown,
   Presentation,
   MoreHorizontal,
-  Trash2
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -59,6 +60,7 @@ import {
   unmountExportIframe,
 } from './lib/pdfRenderFromPreview';
 import { jsPDF } from 'jspdf';
+import { formatLessonContent, needsLessonFormatting } from './lib/lessonContent';
 
 export default function App() {
   type LessonSnapshot = {
@@ -79,6 +81,7 @@ export default function App() {
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isFormattingLesson, setIsFormattingLesson] = useState(false);
   const [pdfExportReady, setPdfExportReady] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const exportPageOptions: Array<{ key: ExportPageSize; label: string; width: number; height: number }> = [
@@ -683,6 +686,25 @@ export default function App() {
     }
   };
 
+  const formatActiveLesson = async () => {
+    if (!activeLesson || isFormattingLesson) return;
+    if (!needsLessonFormatting(activeLesson.content)) {
+      alert(t.formatLessonNone);
+      return;
+    }
+
+    const formatted = formatLessonContent(activeLesson.content);
+    setIsFormattingLesson(true);
+    try {
+      await saveLesson(activeLesson.title, formatted, true);
+      setEditorContentReloadKey((key) => key + 1);
+      alert(t.formatLessonDone);
+    } finally {
+      setIsFormattingLesson(false);
+      setShowHeaderMoreMenu(false);
+    }
+  };
+
   const handleTranslateContent = async (targetCode?: string) => {
     if (!activeLesson || isTranslating) return;
     setIsTranslating(true);
@@ -1088,6 +1110,21 @@ ${activeLesson.content}`;
 
                 <button
                   type="button"
+                  onClick={() => void formatActiveLesson()}
+                  disabled={isFormattingLesson}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  title={t.formatLessonHint}
+                >
+                  {isFormattingLesson ? (
+                    <Loader2 size={16} className="animate-spin text-blue-500" />
+                  ) : (
+                    <Sparkles size={16} className="text-amber-500" />
+                  )}
+                  <span className="hidden md:inline">{t.formatLesson}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setIsEditing(true)}
                   className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
                   title={t.edit}
@@ -1135,6 +1172,15 @@ ${activeLesson.content}`;
                       >
                         <FileDown size={16} className="text-emerald-500" />
                         {t.exportMarkdown}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isFormattingLesson}
+                        onClick={() => void formatActiveLesson()}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                      >
+                        <Sparkles size={16} className="text-amber-500" />
+                        {t.formatLesson}
                       </button>
                       <button
                         type="button"

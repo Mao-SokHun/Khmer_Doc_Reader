@@ -21,17 +21,98 @@
     color-scheme: dark;
   }
 
+  /* Document viewer — force readable light text in dark mode */
+  .dark .khmer-doc-font,
+  .dark #document-to-export {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .khmer-doc-font .prose,
+  .dark .khmer-doc-font .doc-viewer-html,
+  .dark #document-to-export .prose,
+  .dark #document-to-export .doc-viewer-html {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .khmer-doc-font .prose :where(p, li, ul, ol, span, blockquote, td, th, div:not([data-code-block-wrap]):not([data-export-code-block])),
+  .dark .khmer-doc-font .doc-viewer-html :where(p, li, ul, ol, span, blockquote, td, th, div:not([data-code-block-wrap])),
+  .dark #document-to-export :where(p, li, ul, ol, span, blockquote, td, th, div:not([data-code-block-wrap]):not([data-export-code-block])) {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .khmer-doc-font :where(h1, h2, h3, h4, h5, h6),
+  .dark #document-to-export :where(h1, h2, h3, h4, h5, h6) {
+    color: rgb(255 255 255) !important;
+  }
+
+  .dark .khmer-doc-font :where(strong, b),
+  .dark #document-to-export :where(strong, b) {
+    color: rgb(255 255 255) !important;
+  }
+
+  .dark .khmer-doc-font a,
+  .dark .khmer-doc-font .doc-viewer-html a,
+  .dark #document-to-export a {
+    color: rgb(147 197 253) !important;
+  }
+
+  .dark .khmer-doc-font em,
+  .dark .khmer-doc-font .doc-viewer-html em,
+  .dark #document-to-export em {
+    color: rgb(226 232 240) !important;
+  }
+
+  /* Beat Tailwind text-slate-* utilities inside documents */
+  .dark .khmer-doc-font [class*="text-slate-"],
+  .dark #document-to-export [class*="text-slate-"] {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .khmer-doc-font :is(h1, h2, h3, h4, h5, h6)[class*="text-slate-"],
+  .dark #document-to-export :is(h1, h2, h3, h4, h5, h6)[class*="text-slate-"] {
+    color: rgb(255 255 255) !important;
+  }
+
+  /* Override inline light-mode colors saved from the rich editor */
+  .dark .khmer-doc-font [style*="color"],
+  .dark .khmer-doc-font .doc-viewer-html [style*="color"],
+  .dark #document-to-export [style*="color"],
+  .dark .editor-paper .editor-surface [style*="color"] {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .khmer-doc-font :is(h1, h2, h3, h4, h5, h6)[style*="color"],
+  .dark #document-to-export :is(h1, h2, h3, h4, h5, h6)[style*="color"],
+  .dark .editor-paper .editor-surface :is(h1, h2, h3, h4, h5, h6)[style*="color"] {
+    color: rgb(255 255 255) !important;
+  }
+
+  .dark .khmer-doc-font [style*="background:#fff"],
+  .dark .khmer-doc-font [style*="background: #fff"],
+  .dark .khmer-doc-font [style*="background:#ffffff"],
+  .dark .khmer-doc-font [style*="background: #ffffff"],
+  .dark .khmer-doc-font .doc-viewer-html [style*="background:#fff"],
+  .dark .khmer-doc-font .doc-viewer-html [style*="background: #fff"],
+  .dark .khmer-doc-font .doc-viewer-html [style*="background:#ffffff"],
+  .dark .khmer-doc-font .doc-viewer-html [style*="background: #ffffff"],
+  .dark #document-to-export [style*="background:#fff"],
+  .dark #document-to-export [style*="background: #fff"],
+  .dark #document-to-export [style*="background:#ffffff"],
+  .dark #document-to-export [style*="background: #ffffff"] {
+    background-color: rgb(30 41 59) !important;
+  }
+
   .dark .prose thead {
     background-color: rgb(30 41 59);
   }
 
   .dark .prose th {
-    color: rgb(148 163 184);
+    color: rgb(226 232 240);
     border-bottom-color: rgb(51 65 85);
   }
 
   .dark .prose td {
-    color: rgb(203 213 225);
+    color: rgb(241 245 249);
     border-bottom-color: rgb(51 65 85);
     background-color: rgb(15 23 42);
   }
@@ -298,7 +379,34 @@
   }
 
   .dark .editor-paper .editor-surface {
-    color: rgb(226 232 240);
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .editor-paper .editor-surface :where(p, li, ul, ol, span, blockquote, td, div:not([data-code-block-wrap])) {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .editor-paper .editor-surface :where(h1, h2, h3, h4, h5, h6) {
+    color: rgb(255 255 255) !important;
+  }
+
+  .dark .editor-paper .editor-surface :where(strong, b) {
+    color: rgb(255 255 255) !important;
+  }
+
+  .dark .editor-paper .editor-surface [class*="text-slate-"] {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .editor-paper .editor-surface p,
+  .dark .editor-paper .editor-surface li,
+  .dark .editor-paper .editor-surface h1,
+  .dark .editor-paper .editor-surface h2,
+  .dark .editor-paper .editor-surface h3,
+  .dark .editor-paper .editor-surface h4,
+  .dark .editor-paper .editor-surface h5,
+  .dark .editor-paper .editor-surface h6 {
+    color: inherit;
   }
 
   .dark .editor-paper .editor-ruler {
@@ -340,7 +448,16 @@
 
   .dark .editor-paper [style*="color:#1"],
   .dark .editor-paper [style*="color: #1"] {
-    color: rgb(226 232 240) !important;
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark .editor-paper hr {
+    border-color: rgb(100 116 139) !important;
+  }
+
+  .dark .khmer-doc-font hr,
+  .dark #document-to-export hr {
+    border-color: rgb(100 116 139) !important;
   }
 }
 

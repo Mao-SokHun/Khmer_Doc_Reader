@@ -214,8 +214,8 @@ export function DocViewer({
         ref={rootRef}
         {...(!previewMode || exportPreview ? { id: 'document-to-export' } : {})}
         className={previewMode
-          ? 'khmer-doc-font w-full overflow-hidden bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100'
-          : 'khmer-doc-font w-full max-w-[1180px] bg-white dark:bg-slate-900 overflow-hidden text-slate-900 dark:text-slate-100 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors'}
+          ? 'khmer-doc-font w-full overflow-hidden bg-white text-slate-900 dark:bg-[#1e293b] dark:text-slate-50'
+          : 'khmer-doc-font w-full max-w-[1180px] bg-white dark:bg-[#1e293b] overflow-hidden text-slate-900 dark:text-slate-50 rounded-xl border border-slate-200 dark:border-slate-600 shadow-sm dark:shadow-slate-950/50 transition-colors'}
         style={{ fontSize: `${baseSize}px`, fontFamily: KHMER_DOCUMENT_FONT_STACK }}
       >
         <div
@@ -227,7 +227,7 @@ export function DocViewer({
           }
         >
           {!renderAsMarkdown ? (
-            <div dangerouslySetInnerHTML={{ __html: viewContent }} />
+            <div className="doc-viewer-html" dangerouslySetInnerHTML={{ __html: viewContent }} />
           ) : (
           <Markdown
             remarkPlugins={[remarkGfm, remarkMath]}
@@ -287,7 +287,7 @@ export function DocViewer({
                 <h3>{children}</h3>
               ) : (
                 <h3
-                  className="mt-6 mb-3 font-bold text-slate-800 dark:text-slate-200 pl-3 border-l-[3px] border-blue-400 scroll-mt-24"
+                  className="mt-6 mb-3 font-bold text-slate-800 dark:text-slate-100 pl-3 border-l-[3px] border-blue-400 scroll-mt-24"
                   style={{ fontSize: `${h3Size}px` }}
                 >
                   {children}
@@ -296,22 +296,22 @@ export function DocViewer({
               h4: ({ children }) => exportPreview ? (
                 <h4>{children}</h4>
               ) : (
-                <h4 className="mt-5 mb-2 font-bold text-slate-800 dark:text-slate-200 scroll-mt-24">{children}</h4>
+                <h4 className="mt-5 mb-2 font-bold text-slate-800 dark:text-slate-100 scroll-mt-24">{children}</h4>
               ),
               h5: ({ children }) => exportPreview ? (
                 <h5>{children}</h5>
               ) : (
-                <h5 className="mt-4 mb-2 font-semibold text-slate-800 dark:text-slate-200 scroll-mt-24">{children}</h5>
+                <h5 className="mt-4 mb-2 font-semibold text-slate-800 dark:text-slate-100 scroll-mt-24">{children}</h5>
               ),
               h6: ({ children }) => exportPreview ? (
                 <h6>{children}</h6>
               ) : (
-                <h6 className="mt-3 mb-2 font-semibold text-slate-700 dark:text-slate-300 scroll-mt-24">{children}</h6>
+                <h6 className="mt-3 mb-2 font-semibold text-slate-700 dark:text-slate-200 scroll-mt-24">{children}</h6>
               ),
               p: ({ children }) => exportPreview ? (
                 <p>{children}</p>
               ) : (
-                <p className="mb-3 leading-[1.75] text-slate-700 dark:text-slate-300 font-normal" style={{ fontSize: `${baseSize}px` }}>{children}</p>
+                <p className="mb-3 leading-[1.75] text-slate-700 dark:text-slate-200 font-normal" style={{ fontSize: `${baseSize}px` }}>{children}</p>
               ),
               ul: ({ children }) => exportPreview ? (
                 <ul>{children}</ul>
@@ -326,12 +326,12 @@ export function DocViewer({
               li: ({ children }) => exportPreview ? (
                 <li>{children}</li>
               ) : (
-                <li className="text-slate-700 dark:text-slate-300 leading-[1.7]" style={{ fontSize: `${baseSize}px` }}>{children}</li>
+                <li className="text-slate-700 dark:text-slate-200 leading-[1.7]" style={{ fontSize: `${baseSize}px` }}>{children}</li>
               ),
               blockquote: ({ children }) => exportPreview ? (
                 <blockquote>{children}</blockquote>
               ) : (
-                <blockquote className="border-l-4 border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 p-6 rounded-r-lg italic text-slate-600 dark:text-slate-300 my-8">
+                <blockquote className="border-l-4 border-slate-200 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-800/60 p-6 rounded-r-lg italic text-slate-600 dark:text-slate-200 my-8">
                   {children}
                 </blockquote>
               ),

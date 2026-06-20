@@ -47,6 +47,54 @@ export function normalizeImportedMarkdown(raw: string): string {
   return text.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/** True when text still shows raw Markdown markers (##, **, ```, list *). */
+export function plainTextHasMarkdownSyntax(text: string): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  return (
+    looksLikeMarkdownDocument(trimmed) ||
+    /^#{1,6}\s+/m.test(trimmed) ||
+    trimmed.includes('```') ||
+    /\*\*[^*\n]+\*\*/.test(trimmed) ||
+    /^\s*[-*+]\s+\S/m.test(trimmed)
+  );
+}
+
+/** Extract readable Markdown from stored lesson HTML or Markdown. */
+export function contentToPlainMarkdown(content: string): string {
+  const raw = extractMarkdownFromMisplacedCodeBlock((content || '').trim());
+  if (!raw) return '';
+  if (!isHtmlContent(raw)) return normalizeImportedMarkdown(raw);
+  return normalizeImportedMarkdown(htmlBrBlobToMarkdown(raw));
+}
+
+/** Convert messy Markdown / HTML lesson into structured editor HTML. */
+export function formatLessonContent(content: string): string {
+  const md = contentToPlainMarkdown(content);
+  if (!md) return (content || '').trim();
+  return markdownToEditorHtml(md);
+}
+
+/** Whether the lesson still needs auto layout (visible *, **, ```, ##). */
+export function needsLessonFormatting(content: string): boolean {
+  const raw = (content || '').trim();
+  if (!raw) return false;
+
+  if (!isHtmlContent(raw)) {
+    return plainTextHasMarkdownSyntax(raw);
+  }
+
+  if (/<h[1-6][\s>]/i.test(raw) && /<div[^>]*data-code-block-wrap/i.test(raw)) {
+    return false;
+  }
+
+  if (/<h[1-6][\s>]/i.test(raw) && !plainTextHasMarkdownSyntax(htmlBrBlobToMarkdown(raw))) {
+    return false;
+  }
+
+  return plainTextHasMarkdownSyntax(htmlBrBlobToMarkdown(raw));
+}
+
 function isBrokenMarkdownHtml(html: string): boolean {
   if (!html.includes('<br')) return false;
   return /###|```|^\s*---\s*$/m.test(html) || html.includes('* **');
@@ -66,7 +114,7 @@ export function repairContentForRender(content: string): string {
 
   if (!isHtmlContent(raw)) {
     const md = normalizeImportedMarkdown(raw);
-    if (md.includes('```') || looksLikeMarkdownDocument(md)) return md;
+    if (plainTextHasMarkdownSyntax(md)) return md;
     if (looksLikeCodeBlock(md)) {
       return wrapAsMarkdownCodeFence(md, detectCodeLanguage(md));
     }
@@ -83,7 +131,7 @@ export function repairContentForRender(content: string): string {
   }
 
   const plain = htmlBrBlobToMarkdown(raw);
-  if (looksLikeMarkdownDocument(plain)) return normalizeImportedMarkdown(plain);
+  if (plainTextHasMarkdownSyntax(plain)) return normalizeImportedMarkdown(plain);
   if (looksLikeCodeBlock(plain) && !plain.includes('```')) {
     return wrapAsMarkdownCodeFence(plain, detectCodeLanguage(plain));
   }

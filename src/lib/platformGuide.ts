@@ -1,4 +1,4 @@
-export const PLATFORM_GUIDE_VERSION = 'platform-v4';
+export const PLATFORM_GUIDE_VERSION = 'platform-v6';
 
 export const PLATFORM_GUIDE_KH = `# មគ្គុទ្ទេសក៍ប្រើប្រាស់ Khmer Doc Reader
 
@@ -21,7 +21,7 @@ export const PLATFORM_GUIDE_KH = `# មគ្គុទ្ទេសក៍ប្�
 1. ជ្រើស Tab នៅ Sidebar
 2. ចុច **+** បន្ថែមមេរៀន
 3. វាយ **ឈ្មោះមេរៀន** ក្នុង modal
-4. ជ្រើស **គំរូ** — ឧ. របាយការណ៍, គម្រោង, សឥ្ធាកម្មមេរៀន
+4. ជ្រើស **គំរូ** — ឧ. ឯកសារកូដ, របាយការណ៍, គម្រោង, សន្លឹកមេរៀន
 5. ឬបង្កើតឯកសារទទេ រួចសរសេរខ្លួនឯង
 
 ---
@@ -31,8 +31,9 @@ export const PLATFORM_GUIDE_KH = `# មគ្គុទ្ទេសក៍ប្�
 1. បើកមេរៀន → ចុច **កែសម្រួល** ឬ **Ctrl+E**
 2. **Toolbar** ខាងលើ — អក្សរ, Heading, List, Code, Table, រូបភាព
 3. **Paste code** — platform នឹង wrap code block + syntax highlighting ដោយស្វ័យប្រវត្តិ
-4. **Markdown** — heading (#), bold (**), code fences ដំណើរការល្អ
-5. **រក្សាទុក** — autosave + ចុច **រក្សាទុក** ដើម្បី save manual + snapshot
+4. **Format code (Prettier)** — ចុចប៊ូតុង **✨** ក្បែរ Code toolbar ឬ **Shift+Alt+F**
+5. **Markdown** — heading (#), bold (**), code fences ដំណើរការល្អ
+6. **រក្សាទុក** — autosave + ចុច **រក្សាទុក** ដើម្បី save manual + snapshot
 
 ---
 
@@ -67,10 +68,11 @@ export const PLATFORM_GUIDE_KH = `# មគ្គុទ្ទេសក៍ប្�
 
 | គំរូ | ប្រើសម្រាប់ |
 |------|------------|
+| **ឯកសារកូដ** | Paste / សរសេរ code — JS, Python, SQL, HTML |
 | **របាយការណ៍ជីវភាព** | បទពិសោធន៍ ការអប់រំ ជំនាញ |
 | **របាយការណ៍** | របាយការណ៍ការងារ លទ្ធផល ផែនការបន្ត |
 | **គម្រោង** | ផែនការ តួនាទី ហានិភ័យ |
-| **សឥ្ធាកម្មមេរៀន** | គោលបំណង សកម្មភាព វាយតម្លៃ |
+| **សន្លឹកមេរៀន** | គោលបំណង សកម្មភាព វាយតម្លៃ |
 | **មេរៀនភាសា SQL** | សំណួរ SQL |
 | **កិច្ចការផ្ទះ / សំណួរក្រេប** | កិច្ចការផ្ទះ ឬ quiz |
 | **កំណត់ត្រាប្រជុំ** | របៀបវារៈ កិច្ចការ |
@@ -85,6 +87,7 @@ export const PLATFORM_GUIDE_KH = `# មគ្គុទ្ទេសក៍ប្�
 |----------|--------|
 | Ctrl+K | ស្វែងរក |
 | Ctrl+E | កែសម្រួល |
+| Shift+Alt+F | Format code (Prettier) |
 | Ctrl+S | រក្សាទុក (ក្នុង editor) |
 
 ---
@@ -92,7 +95,7 @@ export const PLATFORM_GUIDE_KH = `# មគ្គុទ្ទេសក៍ប្�
 ## 9. Tips
 
 - មិនចាំបាច់ login — ទិន្នន័យរក្សាទុក per browser
-- ប្រើ **Templates** — របាយការណ៍, គម្រោង, SQL, សឥ្ធាកម្មមេរៀន
+- ប្រើ **Templates** — ឯកសារកូដ, របាយការណ៍, គម្រោង, SQL, សន្លឹកមេរៀន
 - ប្រើ **Outline** សម្រាប់មេរៀនវែង
 
 ---
@@ -131,8 +134,9 @@ This document walks you through **step by step** how to use the platform.
 1. Open a lesson → click **Edit** or \`Ctrl+E\`
 2. Use the **toolbar** — fonts, headings, lists, code, tables, images
 3. **Paste code** — auto-wraps into syntax-highlighted blocks
-4. **Markdown** — \`# headings\`, \`**bold**\`, fenced code blocks work well
-5. **Save** — autosave runs automatically; click **Save** for manual save + snapshot
+4. **Format code (Prettier)** — click the **wand** button next to Code in the toolbar, or press **Shift+Alt+F**
+5. **Markdown** — \`# headings\`, \`**bold**\`, fenced code blocks work well
+6. **Save** — autosave runs automatically; click **Save** for manual save + snapshot
 
 ---
 
@@ -167,6 +171,7 @@ Ready-made **templates** help you create documents quickly — click **+** to ad
 
 | Template | Use for |
 |----------|---------|
+| **Code document** | Paste or write code — JS, Python, SQL, HTML |
 | **Resume / CV** | Work history, education, skills |
 | **Report** | Progress reports, results, next steps |
 | **Project** | Project plans — timeline, roles, risks |
@@ -185,6 +190,7 @@ Ready-made **templates** help you create documents quickly — click **+** to ad
 |----------|--------|
 | \`Ctrl+K\` | Search |
 | \`Ctrl+E\` | Edit |
+| \`Shift+Alt+F\` | Format code (Prettier) |
 | \`Ctrl+S\` | Save (in editor) |
 
 ---
@@ -192,7 +198,7 @@ Ready-made **templates** help you create documents quickly — click **+** to ad
 ## 9. Tips
 
 - No login required — your workspace is saved per browser
-- Use **Templates** — Report, Project, SQL, Lesson plan
+- Use **Templates** — Code document, Report, Project, SQL, Lesson plan
 - Use the **Outline** for long documents
 
 ---
