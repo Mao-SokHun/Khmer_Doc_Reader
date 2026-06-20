@@ -9,9 +9,8 @@ import { DocViewer } from './components/DocViewer';
 import { PdfExportPreview } from './components/PdfExportPreview';
 import { Editor } from './components/Editor';
 import { translations, Language } from './i18n';
-import { GoogleGenAI } from "@google/genai";
-import { 
-  BookOpen, 
+import {
+  BookOpen,
   Edit3, 
   Plus, 
   Layout, 
@@ -43,7 +42,6 @@ import { TemplatePickerModal } from './components/TemplatePickerModal';
 import { NameInputModal } from './components/NameInputModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { ToastStack, type ToastMessage } from './components/Toast';
-import { getOwnerId, getOwnerLabel } from './lib/auth';
 import { loadFontSize, saveFontSize } from './lib/preferences';
 import type { LessonTemplate } from './lib/templates';
 import { getTemplateContent } from './lib/templates';
@@ -62,8 +60,24 @@ import {
   unmountExportIframe,
 } from './lib/pdfRenderFromPreview';
 import { jsPDF } from 'jspdf';
-import { formatLessonContent, needsLessonFormatting } from './lib/lessonContent';
-import { formatLessonWithAiHtml, isGeminiConfigured } from './lib/aiFormatLesson';
+import { formatLessonContent, needsLessonFormatting, markdownToEditorHtml } from './lib/lessonContent';
+import { formatLessonWithAiHtml, generateLessonHtml, isGeminiConfigured, translateLessonMarkdown } from './lib/aiFormatLesson';
+import { GoogleSignInButton } from './components/GoogleSignInButton';
+import { GenerateLessonModal } from './components/GenerateLessonModal';
+import { ClassroomPage } from './components/ClassroomPage';
+import { TagsInput } from './components/TagsInput';
+import {
+  getOwnerId,
+  getOwnerLabel,
+  getStoredProfile,
+  setOwnerId,
+  setStoredProfile,
+  signOutToLocal,
+  isGoogleSignedIn,
+  getReaderId,
+  type UserProfile,
+} from './lib/auth';
+import { downloadWorkspaceZip, exportWorkspace, importWorkspace, parseWorkspaceImportFile } from './lib/workspaceBackup';
 
 export default function App() {
   type LessonSnapshot = {
@@ -112,8 +126,9 @@ export default function App() {
   ]);
   const [lang, setLang] = useState<Language>('kh');
   const [fontSize, setFontSize] = useState(() => loadFontSize());
-  const ownerId = useMemo(() => getOwnerId(), []);
-  const ownerLabel = useMemo(() => getOwnerLabel(), [ownerId]);
+  const [ownerId, setOwnerIdState] = useState(() => getOwnerId());
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getStoredProfile());
+  const ownerLabel = useMemo(() => getOwnerLabel(), [ownerId, userProfile]);
   const [sharedPayload, setSharedPayload] = useState<SharedLessonPayload | null>(null);
   const [shareLoadError, setShareLoadError] = useState<string | null>(null);
   const [loadingShared, setLoadingShared] = useState(false);
@@ -121,6 +136,10 @@ export default function App() {
   const [editorContentReloadKey, setEditorContentReloadKey] = useState(0);
   const shareTokenFromUrl = useMemo(
     () => new URLSearchParams(window.location.search).get('share'),
+    []
+  );
+  const classroomTokenFromUrl = useMemo(
+    () => new URLSearchParams(window.location.search).get('classroom'),
     []
   );
   const [showSearchModal, setShowSearchModal] = useState(false);
@@ -136,6 +155,11 @@ export default function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastIdRef = useRef(0);
+  const [showGenerateLessonModal, setShowGenerateLessonModal] = useState(false);
+  const [generateLessonFolderId, setGenerateLessonFolderId] = useState<string | null>(null);
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const backupImportRef = useRef<HTMLInputElement>(null);
+  const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0);
   const [translateTarget, setTranslateTarget] = useState('en');
   const [showHeaderMoreMenu, setShowHeaderMoreMenu] = useState(false);
   const [nameModal, setNameModal] = useState<
@@ -333,7 +357,129 @@ export default function App() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [lang, ownerId, sharedPayload, isEditing]);
+  }, [lang, ownerId, sharedPayload, isEditing, workspaceRefreshKey]);
+
+  const handleGoogleSignIn = async (credential: string) => {
+    const previousOwnerId = ownerId;
+    try {
+      const profile = await apiFetch<UserProfile>('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({ credential }),
+      });
+      if (previousOwnerId.startsWith('local:') && previousOwnerId !== profile.ownerId) {
+        await apiFetch('/api/workspace/migrate', {
+          method: 'POST',
+          body: JSON.stringify({ fromOwnerId: previousOwnerId, toOwnerId: profile.ownerId }),
+        });
+        showToast(t.migrateWorkspaceDone, 'success');
+      }
+      setOwnerId(profile.ownerId);
+      setOwnerIdState(profile.ownerId);
+      setStoredProfile(profile);
+      setUserProfile(profile);
+      setWorkspaceRefreshKey((k) => k + 1);
+    } catch (e) {
+      console.error('Google sign-in failed:', e);
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleSignOut = () => {
+    signOutToLocal();
+    const nextId = getOwnerId();
+    setOwnerIdState(nextId);
+    setUserProfile(null);
+    setWorkspaceRefreshKey((k) => k + 1);
+    showToast(lang === 'kh' ? 'បានចេញ — workspace ថ្មីក្នុង browser នេះ' : 'Signed out — new local workspace on this browser', 'info');
+  };
+
+  const handleExportBackup = async () => {
+    try {
+      const data = await exportWorkspace(ownerId);
+      await downloadWorkspaceZip(data);
+      showToast(lang === 'kh' ? 'Backup downloaded' : 'Backup downloaded', 'success');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleImportBackup = async (file: File) => {
+    try {
+      const data = await parseWorkspaceImportFile(file);
+      await importWorkspace(ownerId, data, 'merge');
+      setWorkspaceRefreshKey((k) => k + 1);
+      showToast(t.importWorkspaceDone, 'success');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleShareClassroom = async () => {
+    if (!activeLesson) return;
+    try {
+      const result = await apiFetch<{ token: string }>(
+        `/api/folders/${activeLesson.folderId}/classroom-share?ownerId=${encodeURIComponent(ownerId)}`
+      );
+      const link = `${window.location.origin}${window.location.pathname}?classroom=${result.token}`;
+      await navigator.clipboard.writeText(link);
+      showToast(t.classroomLinkCopied, 'success');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleGenerateLesson = async (opts: {
+    topic: string;
+    lang: Language;
+    level: string;
+    includeQuiz: boolean;
+  }) => {
+    const { title, html } = await generateLessonHtml(opts);
+    return { title, contentHtml: html };
+  };
+
+  const createGeneratedLesson = async (title: string, contentHtml: string) => {
+    const folderId = generateLessonFolderId || folders[0]?.id;
+    if (!folderId) return;
+    const newLesson = await apiFetch<Lesson>('/api/lessons', {
+      method: 'POST',
+      body: JSON.stringify({
+        folderId,
+        title,
+        content: contentHtml,
+        ownerId,
+        order: lessons.filter((l) => l.folderId === folderId).length,
+      }),
+    });
+    setLessons((prev) => [...prev, newLesson].sort((a, b) => a.order - b.order));
+    setActiveLessonId(newLesson.id);
+    setIsEditing(true);
+    showToast(lang === 'kh' ? 'AI បង្កើតមេរៀនរួច' : 'AI lesson created', 'success');
+  };
+
+  const updateLessonTags = async (lessonId: string, tags: string[]) => {
+    try {
+      const updated = await apiFetch<Lesson>(`/api/lessons/${lessonId}/meta`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ownerId, tags }),
+      });
+      setLessons((prev) => prev.map((l) => (l.id === lessonId ? updated : l)));
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    lessons.forEach((l) => l.tags?.forEach((tag) => set.add(tag)));
+    return [...set].sort();
+  }, [lessons]);
+
+  const filteredLessons = useMemo(() => {
+    if (!activeTagFilter) return lessons;
+    return lessons.filter((l) => l.tags?.includes(activeTagFilter));
+  }, [lessons, activeTagFilter]);
+
 
   useEffect(() => {
     if (!showShareModal || !activeLessonId) {
@@ -484,7 +630,7 @@ export default function App() {
     return value;
   };
   const uiFolders = folders.map((folder) => ({ ...folder, name: localizeSeedLabel(folder.name) }));
-  const uiLessons = lessons.map((lesson) => ({ ...lesson, title: localizeSeedLabel(lesson.title) }));
+  const uiLessons = filteredLessons.map((lesson) => ({ ...lesson, title: localizeSeedLabel(lesson.title) }));
   const translateLanguageOptions = [
     { code: 'en', label: 'English' },
     { code: 'kh', label: 'Khmer' },
@@ -707,7 +853,8 @@ export default function App() {
 
   const formatActiveLesson = async () => {
     if (!activeLesson || isFormattingLesson) return;
-    if (!isGeminiConfigured() && !needsLessonFormatting(activeLesson.content)) {
+    const aiOn = await isGeminiConfigured();
+    if (!aiOn && !needsLessonFormatting(activeLesson.content)) {
       alert(t.formatLessonNone);
       return;
     }
@@ -717,7 +864,7 @@ export default function App() {
       const formatted = await formatLessonWithAiHtml(activeLesson.content, lang);
       await saveLesson(activeLesson.title, formatted, true);
       setEditorContentReloadKey((key) => key + 1);
-      alert(isGeminiConfigured() ? t.formatLessonAiDone : t.formatLessonDone);
+      alert(aiOn ? t.formatLessonAiDone : t.formatLessonDone);
     } catch (e) {
       console.error('Format lesson failed:', e);
       alert(t.formatLessonAiFailed);
@@ -731,7 +878,6 @@ export default function App() {
     if (!activeLesson || isTranslating) return;
     setIsTranslating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const resolvedCode = targetCode || translateTarget;
       const languageByCode: Record<string, string> = {
         en: 'English',
@@ -743,35 +889,20 @@ export default function App() {
         fr: 'French',
       };
       const targetLang = languageByCode[resolvedCode] || 'English';
-      
-      const prompt = `Translate this Markdown document to ${targetLang}.
-Keep Markdown structure, headings, lists, code fences, tables, and inline code exactly.
-Translate only human-readable text.
-Return ONLY the translated Markdown content, no explanations.
-
-${activeLesson.content}`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: "You are a professional translator specialized in technical documentation and Markdown.",
-          temperature: 0.2,
-        }
-      });
-
-      const translatedText = (response.text || '').trim();
-      if (!translatedText) throw new Error('No translated text returned');
+      const translatedMd = await translateLessonMarkdown(activeLesson.content, targetLang);
+      const translatedHtml = markdownToEditorHtml(translatedMd);
 
       await apiFetch<Lesson>(`/api/lessons/${activeLesson.id}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          content: translatedText,
+          content: translatedHtml,
+          ownerId,
         }),
       });
       setLessons((prev) =>
-        prev.map((lesson) => (lesson.id === activeLesson.id ? { ...lesson, content: translatedText } : lesson))
+        prev.map((lesson) => (lesson.id === activeLesson.id ? { ...lesson, content: translatedHtml } : lesson))
       );
+      setEditorContentReloadKey((k) => k + 1);
     } catch (e) {
       console.error("Translation failed:", e);
       alert(t.errorTranslate);
@@ -990,6 +1121,10 @@ ${activeLesson.content}`;
     );
   }
 
+  if (classroomTokenFromUrl) {
+    return <ClassroomPage token={classroomTokenFromUrl} lang={lang} fontSize={fontSize} />;
+  }
+
   if (sharedPayload) {
     const sharedLesson = sharedPayload.lesson;
     return (
@@ -1005,7 +1140,15 @@ ${activeLesson.content}`;
           <ThemeToggle lightLabel={t.lightMode} darkLabel={t.darkMode} />
         </header>
         <main className="flex-1 overflow-y-auto">
-          <DocViewer content={sharedLesson.content} fontSize={fontSize} readOnly />
+          <DocViewer
+            content={sharedLesson.content}
+            fontSize={fontSize}
+            readOnly
+            lang={lang}
+            shareToken={shareTokenFromUrl || undefined}
+            lessonId={sharedLesson.id}
+            readerId={getReaderId()}
+          />
         </main>
       </div>
     );
@@ -1102,6 +1245,44 @@ ${activeLesson.content}`;
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            {userProfile ? (
+              <div className="hidden items-center gap-2 md:flex">
+                {userProfile.picture ? (
+                  <img src={userProfile.picture} alt="" className="h-8 w-8 rounded-full" />
+                ) : null}
+                <span className="max-w-[120px] truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {userProfile.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+                >
+                  {t.signOut}
+                </button>
+              </div>
+            ) : (
+              <div className="hidden md:block">
+                <GoogleSignInButton lang={lang} onCredential={(c) => void handleGoogleSignIn(c)} />
+              </div>
+            )}
+
+            {allTags.length > 0 ? (
+              <select
+                value={activeTagFilter ?? ''}
+                onChange={(e) => setActiveTagFilter(e.target.value || null)}
+                className="hidden max-w-[120px] truncate rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:block"
+                title={t.filterByTag}
+              >
+                <option value="">{t.allTags}</option>
+                {allTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+
             <button
               type="button"
               onClick={() => setShowSearchModal(true)}
@@ -1142,6 +1323,22 @@ ${activeLesson.content}`;
                 EN
               </button>
             </div>
+
+            {!activeLesson ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGenerateLessonFolderId(folders[0]?.id ?? null);
+                    setShowGenerateLessonModal(true);
+                  }}
+                  className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 sm:inline-flex"
+                >
+                  <Sparkles size={16} className="text-amber-500" />
+                  {t.generateLessonTitle}
+                </button>
+              </>
+            ) : null}
 
             {activeLesson && !isEditing && (
               <>
@@ -1186,6 +1383,16 @@ ${activeLesson.content}`;
                   <Edit3 size={16} />
                   <span className="hidden sm:inline">{t.edit}</span>
                 </button>
+
+                {activeLesson ? (
+                  <div className="hidden lg:block w-48 shrink-0">
+                    <TagsInput
+                      tags={activeLesson.tags ?? []}
+                      onChange={(tags) => void updateLessonTags(activeLesson.id, tags)}
+                      placeholder={t.tagsPlaceholder}
+                    />
+                  </div>
+                ) : null}
 
                 <div ref={headerMoreMenuRef} className="relative">
                   <button
@@ -1258,6 +1465,51 @@ ${activeLesson.content}`;
                       >
                         <Trash2 size={16} />
                         {t.delete}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleShareClassroom();
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        <Monitor size={16} className="text-blue-500" />
+                        {t.classroomShare}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGenerateLessonFolderId(activeLesson?.folderId ?? null);
+                          setShowGenerateLessonModal(true);
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        <Sparkles size={16} className="text-amber-500" />
+                        {t.generateLessonTitle}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleExportBackup();
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        <FileDown size={16} />
+                        {t.exportWorkspace}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          backupImportRef.current?.click();
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        <CopyPlus size={16} />
+                        {t.importWorkspace}
                       </button>
                       <div className="my-1 border-t border-slate-100 dark:border-slate-700" />
                       <p className="px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-400">
@@ -1805,6 +2057,27 @@ ${activeLesson.content}`;
         ) : null}
 
         <ToastStack messages={toasts} onDismiss={dismissToast} />
+
+        <input
+          ref={backupImportRef}
+          type="file"
+          accept=".json,.zip"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleImportBackup(file);
+            e.currentTarget.value = '';
+          }}
+        />
+
+        <GenerateLessonModal
+          lang={lang}
+          folderId={generateLessonFolderId ?? ''}
+          open={showGenerateLessonModal}
+          onClose={() => setShowGenerateLessonModal(false)}
+          generate={handleGenerateLesson}
+          onGenerated={(title, contentHtml) => void createGeneratedLesson(title, contentHtml)}
+        />
       </div>
     </div>
   );

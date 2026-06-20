@@ -2,10 +2,14 @@ import { useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { translations } from '../i18n';
+import { getApiBaseUrl, fetchWithRetry } from '../lib/apiBaseUrl';
 
 type QuizBlockProps = {
   code: string;
   lang?: 'kh' | 'en';
+  shareToken?: string;
+  lessonId?: string;
+  readerId?: string;
 };
 
 type QuizData = {
@@ -24,7 +28,7 @@ function parseQuiz(code: string): QuizData | null {
   }
 }
 
-export function QuizBlock({ code, lang = 'kh' }: QuizBlockProps) {
+export function QuizBlock({ code, lang = 'kh', shareToken, lessonId, readerId }: QuizBlockProps) {
   const t = translations[lang];
   const quiz = useMemo(() => parseQuiz(code), [code]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -37,6 +41,31 @@ export function QuizBlock({ code, lang = 'kh' }: QuizBlockProps) {
       </pre>
     );
   }
+
+  const submitQuiz = async (selectedIdx: number, correct: boolean) => {
+    if (!shareToken || !lessonId || !readerId) return;
+    try {
+      await fetchWithRetry(`${getApiBaseUrl()}/api/share/${encodeURIComponent(shareToken)}/quiz-submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lessonId,
+          readerId,
+          selectedIndex: selectedIdx,
+          isCorrect: correct,
+        }),
+      });
+    } catch {
+      /* best effort */
+    }
+  };
+
+  const handleCheck = () => {
+    setChecked(true);
+    if (selected !== null) {
+      void submitQuiz(selected, selected === quiz.answer);
+    }
+  };
 
   const isCorrect = checked && selected === quiz.answer;
 
@@ -76,7 +105,7 @@ export function QuizBlock({ code, lang = 'kh' }: QuizBlockProps) {
         <button
           type="button"
           disabled={selected === null}
-          onClick={() => setChecked(true)}
+          onClick={handleCheck}
           className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
         >
           {lang === 'kh' ? 'ពិនិត្យចម្លើយ' : 'Check answer'}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { formatLessonWithAiHtml, isGeminiConfigured } from '../lib/aiFormatLesson';
+import { formatLessonWithAiHtml, generateImageBase64, isGeminiConfigured } from '../lib/aiFormatLesson';
 import { isHtmlContent, markdownToEditorHtml, normalizeImportedMarkdown, getLessonOutlineHeadings, assignHeadingIdsInDom, findDomHeadingForOutlineId, formatLessonContent, needsLessonFormatting } from '../lib/lessonContent';
 import {
   buildEditorCodeBlockHtml,
@@ -12,6 +12,7 @@ import {
   replaceEditorCodeBlock,
 } from '../lib/codeFormat';
 import { formatSourceCode } from '../lib/prettierFormat';
+import { convertDocxToEditorHtml } from '../lib/docxImport';
 import { plainTextToEditorHtml, sanitizePastedHtml, shouldPasteAsPlainText } from '../lib/pasteSanitize';
 import { SQL_LESSON_KH } from '../lib/markdownTemplates';
 import { highlightElement, scrollElementIntoMainView } from '../lib/scrollTo';
@@ -76,7 +77,6 @@ import {
 } from 'lucide-react';
 import { DocViewer } from './DocViewer';
 import { cn } from '../lib/utils';
-import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 import { Language } from '../i18n';
@@ -1333,7 +1333,7 @@ export function Editor({
     if (!editor || formatLessonBusy) return;
 
     const current = editor.innerHTML;
-    if (!isGeminiConfigured() && !needsLessonFormatting(current)) {
+    if (!(await isGeminiConfigured()) && !needsLessonFormatting(current)) {
       alert(ui.formatLessonNone);
       return;
     }
@@ -1493,31 +1493,8 @@ export function Editor({
     setIsGeneratingImage(true);
     setGeneratedImageUrl(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [
-            {
-              text: imagePrompt,
-            },
-          ],
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1",
-          },
-        },
-      });
-
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          const base64EncodeString = part.inlineData.data;
-          const imageUrl = `data:image/png;base64,${base64EncodeString}`;
-          setGeneratedImageUrl(imageUrl);
-          break;
-        }
-      }
+      const base64 = await generateImageBase64(imagePrompt.trim());
+      setGeneratedImageUrl(`data:image/png;base64,${base64}`);
     } catch (error) {
       console.error('Image generation failed:', error);
       alert(ui.imageGenerateFailed);
@@ -1968,8 +1945,22 @@ export function Editor({
   };
 
   const handleFilePicked = async (file: File) => {
-    const text = await file.text();
     const lower = file.name.toLowerCase();
+    if (lower.endsWith('.docx')) {
+      try {
+        const html = await convertDocxToEditorHtml(file);
+        const cleaned = sanitizePastedHtml(html);
+        setTitle(file.name.replace(/\.docx$/i, ''));
+        updateContent(cleaned);
+        if (editorRef.current) editorRef.current.innerHTML = cleaned;
+      } catch (error) {
+        console.error('DOCX import failed:', error);
+        alert(isKh ? 'Import Word បរាជ័យ' : 'Word import failed');
+      }
+      return;
+    }
+
+    const text = await file.text();
     const isHtml = lower.endsWith('.html') || lower.endsWith('.htm');
     const isMd = lower.endsWith('.md') || lower.endsWith('.markdown');
 
@@ -2156,7 +2147,7 @@ export function Editor({
       <input
         ref={openFileInputRef}
         type="file"
-        accept=".txt,.md,.markdown,.html,.htm"
+        accept=".txt,.md,.markdown,.html,.htm,.docx"
         className="hidden"
         onChange={async (e) => {
           const file = e.target.files?.[0];

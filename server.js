@@ -2,6 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createPool } from './db.js';
+import {
+  geminiFormatMarkdown,
+  geminiGenerateImage,
+  geminiGenerateLesson,
+  geminiTranslateMarkdown,
+  isGeminiConfigured,
+} from './lib/geminiServer.js';
+import { verifyGoogleIdToken } from './lib/googleAuth.js';
 
 dotenv.config();
 
@@ -98,6 +106,54 @@ const initDb = async () => {
     );
   `);
   await pool.query('CREATE INDEX IF NOT EXISTS idx_lesson_shares_token ON lesson_shares(token);');
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_accounts (
+      owner_id TEXT PRIMARY KEY,
+      email TEXT,
+      name TEXT,
+      picture TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS classroom_shares (
+      id TEXT PRIMARY KEY,
+      folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+      owner_id TEXT NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_classroom_shares_token ON classroom_shares(token);');
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lesson_reads (
+      id TEXT PRIMARY KEY,
+      share_token TEXT NOT NULL,
+      lesson_id TEXT NOT NULL,
+      reader_id TEXT NOT NULL,
+      read_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_lesson_reads_token ON lesson_reads(share_token, lesson_id);');
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS quiz_submissions (
+      id TEXT PRIMARY KEY,
+      share_token TEXT NOT NULL,
+      lesson_id TEXT NOT NULL,
+      reader_id TEXT NOT NULL,
+      selected_index INTEGER NOT NULL,
+      is_correct BOOLEAN NOT NULL,
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_quiz_submissions_token ON quiz_submissions(share_token, lesson_id);');
 };
 
 let dbReady = null;
@@ -113,7 +169,12 @@ const ensureDb = () => {
 };
 
 app.get('/api/ping', (_req, res) => {
-  res.json({ ok: true, vercel: Boolean(process.env.VERCEL) });
+  res.json({
+    ok: true,
+    vercel: Boolean(process.env.VERCEL),
+    gemini: isGeminiConfigured(),
+    googleAuth: Boolean((process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim()),
+  });
 });
 
 app.use(async (req, res, next) => {
@@ -585,6 +646,324 @@ app.get('/api/share/:token', async (req, res) => {
         content: lesson.content,
       },
     });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get('/api/ai/status', (_req, res) => {
+  res.json({ configured: isGeminiConfigured() });
+});
+
+app.post('/api/ai/format', async (req, res) => {
+  try {
+    const { content, lang = 'kh' } = req.body || {};
+    const markdown = await geminiFormatMarkdown(String(content || ''), lang);
+    res.json({ markdown });
+  } catch (error) {
+    const code = error.code || error.message;
+    if (code === 'GEMINI_NOT_CONFIGURED') return res.status(503).json({ error: 'Gemini API not configured' });
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/ai/translate', async (req, res) => {
+  try {
+    const { content, targetLang = 'English' } = req.body || {};
+    const markdown = await geminiTranslateMarkdown(String(content || ''), targetLang);
+    res.json({ markdown });
+  } catch (error) {
+    if (error.code === 'GEMINI_NOT_CONFIGURED') return res.status(503).json({ error: 'Gemini API not configured' });
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/ai/generate-lesson', async (req, res) => {
+  try {
+    const { topic, lang = 'kh', level = 'general', includeQuiz = true } = req.body || {};
+    if (!String(topic || '').trim()) return res.status(400).json({ error: 'topic is required' });
+    const markdown = await geminiGenerateLesson({
+      topic: String(topic).trim(),
+      lang,
+      level: String(level),
+      includeQuiz: Boolean(includeQuiz),
+    });
+    res.json({ markdown });
+  } catch (error) {
+    if (error.code === 'GEMINI_NOT_CONFIGURED') return res.status(503).json({ error: 'Gemini API not configured' });
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/ai/generate-image', async (req, res) => {
+  try {
+    const { prompt } = req.body || {};
+    if (!String(prompt || '').trim()) return res.status(400).json({ error: 'prompt is required' });
+    const imageBytes = await geminiGenerateImage(String(prompt).trim());
+    res.json({ imageBase64: imageBytes });
+  } catch (error) {
+    if (error.code === 'GEMINI_NOT_CONFIGURED') return res.status(503).json({ error: 'Gemini API not configured' });
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { credential } = req.body || {};
+    if (!credential) return res.status(400).json({ error: 'credential is required' });
+    const profile = await verifyGoogleIdToken(String(credential));
+    await pool.query(
+      `INSERT INTO user_accounts (owner_id, email, name, picture, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (owner_id) DO UPDATE SET
+         email = EXCLUDED.email,
+         name = EXCLUDED.name,
+         picture = EXCLUDED.picture,
+         updated_at = NOW()`,
+      [profile.ownerId, profile.email, profile.name, profile.picture]
+    );
+    res.json(profile);
+  } catch (error) {
+    if (error.code === 'GOOGLE_AUTH_NOT_CONFIGURED') {
+      return res.status(503).json({ error: 'Google Sign-In not configured' });
+    }
+    res.status(401).json({ error: String(error) });
+  }
+});
+
+app.post('/api/workspace/migrate', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { fromOwnerId, toOwnerId } = req.body || {};
+    if (!fromOwnerId || !toOwnerId || fromOwnerId === toOwnerId) {
+      return res.status(400).json({ error: 'fromOwnerId and toOwnerId are required' });
+    }
+    if (!String(toOwnerId).startsWith('google:')) {
+      return res.status(400).json({ error: 'toOwnerId must be a Google account' });
+    }
+    await client.query('BEGIN');
+    await client.query('UPDATE folders SET owner_id = $2, updated_at = NOW() WHERE owner_id = $1', [
+      fromOwnerId,
+      toOwnerId,
+    ]);
+    await client.query('UPDATE lessons SET owner_id = $2, updated_at = NOW() WHERE owner_id = $1', [
+      fromOwnerId,
+      toOwnerId,
+    ]);
+    await client.query('UPDATE lesson_snapshots SET owner_id = $2 WHERE owner_id = $1', [fromOwnerId, toOwnerId]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: String(error) });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/workspace/export', async (req, res) => {
+  try {
+    const ownerId = String(req.query.ownerId || '');
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const folders = await pool.query(
+      'SELECT * FROM folders WHERE owner_id = $1 ORDER BY order_index ASC, created_at ASC',
+      [ownerId]
+    );
+    const lessons = await pool.query(
+      'SELECT * FROM lessons WHERE owner_id = $1 ORDER BY order_index ASC, created_at ASC',
+      [ownerId]
+    );
+    res.json({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      ownerId,
+      folders: folders.rows.map(toFolder),
+      lessons: lessons.rows.map(toLesson),
+    });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/workspace/import', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { ownerId, data, mode = 'merge' } = req.body || {};
+    if (!ownerId || !data?.folders || !data?.lessons) {
+      return res.status(400).json({ error: 'ownerId and data.folders/lessons are required' });
+    }
+    await client.query('BEGIN');
+    if (mode === 'replace') {
+      await client.query('DELETE FROM lesson_snapshots WHERE owner_id = $1', [ownerId]);
+      await client.query('DELETE FROM lessons WHERE owner_id = $1', [ownerId]);
+      await client.query('DELETE FROM folders WHERE owner_id = $1', [ownerId]);
+    }
+    const folderIdMap = new Map();
+    for (const folder of data.folders) {
+      const newId = crypto.randomUUID();
+      folderIdMap.set(folder.id, newId);
+      await client.query(
+        `INSERT INTO folders (id, owner_id, name, order_index)
+         VALUES ($1, $2, $3, $4)`,
+        [newId, ownerId, folder.name, Number(folder.order) || 0]
+      );
+    }
+    for (const lesson of data.lessons) {
+      const mappedFolderId = folderIdMap.get(lesson.folderId);
+      if (!mappedFolderId) continue;
+      await client.query(
+        `INSERT INTO lessons (id, folder_id, owner_id, title, content, order_index, tags, is_favorite)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          crypto.randomUUID(),
+          mappedFolderId,
+          ownerId,
+          lesson.title,
+          lesson.content || '',
+          Number(lesson.order) || 0,
+          Array.isArray(lesson.tags) ? lesson.tags : [],
+          Boolean(lesson.isFavorite),
+        ]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: String(error) });
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/folders/:id/classroom-share', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ownerId = String(req.query.ownerId || '');
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const folder = await pool.query('SELECT * FROM folders WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (folder.rowCount === 0) return res.status(404).json({ error: 'Folder not found' });
+
+    const existing = await pool.query(
+      `SELECT token, title, expires_at FROM classroom_shares
+       WHERE folder_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY created_at DESC LIMIT 1`,
+      [id]
+    );
+    if (existing.rowCount > 0) {
+      const row = existing.rows[0];
+      return res.json({ token: row.token, title: row.title, expiresAt: row.expires_at });
+    }
+
+    const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    const shareId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 90 * 86400000).toISOString();
+    await pool.query(
+      `INSERT INTO classroom_shares (id, folder_id, owner_id, token, title, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [shareId, id, ownerId, token, folder.rows[0].name, expiresAt]
+    );
+    res.status(201).json({ token, title: folder.rows[0].name, expiresAt });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get('/api/classroom/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const shareRes = await pool.query('SELECT * FROM classroom_shares WHERE token = $1', [token]);
+    if (shareRes.rowCount === 0) return res.status(404).json({ error: 'Classroom not found' });
+    const share = shareRes.rows[0];
+    if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Classroom link expired' });
+    }
+    const lessonsRes = await pool.query(
+      'SELECT id, folder_id, title, content, order_index FROM lessons WHERE folder_id = $1 ORDER BY order_index ASC',
+      [share.folder_id]
+    );
+    res.json({
+      classroom: {
+        token: share.token,
+        folderId: share.folder_id,
+        title: share.title,
+        expiresAt: share.expires_at,
+      },
+      lessons: lessonsRes.rows.map((row) => ({
+        id: row.id,
+        folderId: row.folder_id,
+        title: row.title,
+        content: row.content,
+        order: row.order_index,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/classroom/:token/read', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { lessonId, readerId } = req.body || {};
+    if (!lessonId || !readerId) return res.status(400).json({ error: 'lessonId and readerId are required' });
+    const shareRes = await pool.query('SELECT folder_id FROM classroom_shares WHERE token = $1', [token]);
+    if (shareRes.rowCount === 0) return res.status(404).json({ error: 'Classroom not found' });
+    const lesson = await pool.query('SELECT id FROM lessons WHERE id = $1 AND folder_id = $2', [
+      lessonId,
+      shareRes.rows[0].folder_id,
+    ]);
+    if (lesson.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
+    await pool.query(
+      `INSERT INTO lesson_reads (id, share_token, lesson_id, reader_id)
+       VALUES ($1, $2, $3, $4)`,
+      [crypto.randomUUID(), token, lessonId, readerId]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/share/:token/quiz-submit', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { lessonId, readerId, selectedIndex, isCorrect } = req.body || {};
+    if (!lessonId || !readerId || typeof selectedIndex !== 'number') {
+      return res.status(400).json({ error: 'lessonId, readerId, and selectedIndex are required' });
+    }
+    await pool.query(
+      `INSERT INTO quiz_submissions (id, share_token, lesson_id, reader_id, selected_index, is_correct)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [crypto.randomUUID(), token, lessonId, readerId, selectedIndex, Boolean(isCorrect)]
+    );
+    res.json({ ok: true, isCorrect: Boolean(isCorrect) });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get('/api/folders/:id/classroom-stats', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ownerId = String(req.query.ownerId || '');
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const shareRes = await pool.query(
+      'SELECT token FROM classroom_shares WHERE folder_id = $1 AND owner_id = $2 ORDER BY created_at DESC LIMIT 1',
+      [id, ownerId]
+    );
+    if (shareRes.rowCount === 0) return res.json({ reads: [], quizzes: [] });
+    const token = shareRes.rows[0].token;
+    const reads = await pool.query(
+      `SELECT lesson_id, reader_id, read_at FROM lesson_reads WHERE share_token = $1 ORDER BY read_at DESC LIMIT 100`,
+      [token]
+    );
+    const quizzes = await pool.query(
+      `SELECT lesson_id, reader_id, selected_index, is_correct, submitted_at
+       FROM quiz_submissions WHERE share_token = $1 ORDER BY submitted_at DESC LIMIT 100`,
+      [token]
+    );
+    res.json({ token, reads: reads.rows, quizzes: quizzes.rows });
   } catch (error) {
     res.status(500).json({ error: String(error) });
   }

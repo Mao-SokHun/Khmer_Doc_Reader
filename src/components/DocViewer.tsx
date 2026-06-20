@@ -18,9 +18,12 @@ interface DocViewerProps {
   navigateToHeadingId?: string;
   navigateToSeq?: number;
   previewMode?: boolean;
-  /** When true (export modal preview), mark root so PDF clones this DOM. */
   exportPreview?: boolean;
   readOnly?: boolean;
+  lang?: 'kh' | 'en';
+  shareToken?: string;
+  lessonId?: string;
+  readerId?: string;
   onActiveHeadingChange?: (headingId: string | null) => void;
 }
 
@@ -33,6 +36,10 @@ export function DocViewer({
   previewMode = false,
   exportPreview = false,
   readOnly = false,
+  lang: docLang = 'kh',
+  shareToken,
+  lessonId,
+  readerId,
   onActiveHeadingChange,
 }: DocViewerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -241,7 +248,15 @@ export function DocViewer({
                 if (!isInline) {
                   const normalizedCode = flattenCodeText(children).replace(/\n$/, '');
                   if (lang === 'quiz') {
-                    return <QuizBlock code={normalizedCode} lang="kh" />;
+                    return (
+                      <QuizBlock
+                        code={normalizedCode}
+                        lang={docLang}
+                        shareToken={shareToken}
+                        lessonId={lessonId}
+                        readerId={readerId}
+                      />
+                    );
                   }
                   return (
                     <CodeBlock
