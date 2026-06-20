@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Folder, Lesson, SharedLessonPayload } from './types';
+import { getApiBaseUrl, formatApiError, fetchWithRetry } from './lib/apiBaseUrl';
 import { cn } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
 import { DocViewer } from './components/DocViewer';
@@ -138,12 +139,10 @@ export default function App() {
   const headerMoreMenuRef = useRef<HTMLDivElement | null>(null);
 
   const t = translations[lang];
-  const apiBaseUrl =
-    (import.meta as any).env?.VITE_API_BASE_URL ??
-    ((import.meta as any).env?.PROD ? '' : 'http://localhost:3001');
+  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
 
   const apiFetch = async <T,>(path: string, init?: RequestInit): Promise<T> => {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetchWithRetry(`${apiBaseUrl}${path}`, {
       headers: {
         'Content-Type': 'application/json',
         ...(init?.headers || {}),
@@ -152,7 +151,7 @@ export default function App() {
     });
     if (!response.ok) {
       const msg = await response.text();
-      throw new Error(msg || `API error ${response.status}`);
+      throw new Error(formatApiError(msg || `API error ${response.status}`, lang));
     }
     if (response.status === 204) return null as T;
     return response.json() as Promise<T>;
@@ -1115,9 +1114,21 @@ ${activeLesson.content}`;
 
         <main className={cn('flex-1 min-h-0', isEditing ? 'overflow-hidden' : 'overflow-y-auto')}>
           {workspaceLoadError ? (
-            <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              {lang === 'kh' ? 'មិនអាចផ្ទុកទិន្នន័យបានទេ។ ពិនិត្យការតភ្ជាប់ API។' : 'Could not load workspace. Check API connection.'}{' '}
+            <div className="border-b border-amber-800/60 bg-amber-950/50 px-4 py-2 text-sm text-amber-200/90 dark:border-amber-900 dark:bg-amber-950/40">
+              {lang === 'kh' ? 'មិនអាចផ្ទុកទិន្នន័យបានទេ។' : 'Could not load workspace.'}{' '}
               <span className="opacity-75">{workspaceLoadError}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setWorkspaceLoadError(null);
+                  loadWorkspace(ownerId).catch((e) =>
+                    setWorkspaceLoadError(e instanceof Error ? e.message : String(e))
+                  );
+                }}
+                className="ml-2 underline opacity-90 hover:opacity-100"
+              >
+                {lang === 'kh' ? 'ព្យាយាមម្តងទៀត' : 'Retry'}
+              </button>
             </div>
           ) : null}
           <AnimatePresence mode="wait">

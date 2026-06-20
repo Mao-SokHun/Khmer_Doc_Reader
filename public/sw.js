@@ -1,4 +1,4 @@
-const CACHE = 'khmer-lesson-doc-v1';
+const CACHE = 'khmer-lesson-doc-v2';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
