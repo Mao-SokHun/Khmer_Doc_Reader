@@ -3,6 +3,7 @@ import { Folder, Lesson, SharedLessonPayload } from './types';
 import { getApiBaseUrl, formatApiError, fetchWithRetry } from './lib/apiBaseUrl';
 import { cn } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
+import { HomePage } from './components/HomePage';
 import { DocViewer } from './components/DocViewer';
 import { PdfExportPreview } from './components/PdfExportPreview';
 import { Editor } from './components/Editor';
@@ -1171,79 +1172,23 @@ ${activeLesson.content}`;
                 </motion.div>
               )
             ) : (
-              <div className="p-8 lg:p-12 mx-auto max-w-5xl">
-                <div className="mb-12 flex items-center justify-between">
-                  <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">{t.documentTabs}</h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-2">{lang === 'kh' ? 'ទិដ្ឋភាពទូទៅនៃមេរៀនទាំងអស់របស់អ្នក' : 'Overview of all your lessons'}</p>
-                  </div>
-                  <button 
-                    onClick={addFolder}
-                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-bold text-white shadow-lg shadow-blue-200/80 dark:shadow-blue-950/50 hover:bg-blue-700 dark:hover:bg-blue-500 transition-all active:scale-95"
-                  >
-                    <Plus size={20} />
-                    {t.createTab}
-                  </button>
-                </div>
-
-                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">{lang === 'kh' ? 'ឈ្មោះមេរៀន' : 'Lesson Title'}</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">{lang === 'kh' ? 'ស្ថិតក្នុង Tab' : 'In Tab'}</th>
-                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">{lang === 'kh' ? 'សកម្មភាព' : 'Actions'}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                      {uiFolders.map(folder => {
-                        const folderLessons = uiLessons.filter(l => l.folderId === folder.id);
-                        if (folderLessons.length === 0) return null;
-                        
-                        return folderLessons.map((lesson) => (
-                          <tr key={lesson.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                            <td className="px-6 py-4">
-                              <button 
-                                onClick={() => setActiveLessonId(lesson.id)}
-                                className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left"
-                              >
-                                {lesson.title}
-                              </button>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-[11px] font-bold text-blue-600">
-                                <Layout size={10} />
-                                {folder.name}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <button 
-                                onClick={() => {
-                                  setActiveLessonId(lesson.id);
-                                  setIsEditing(true);
-                                }}
-                                className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
-                              >
-                                <Edit3 size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        ));
-                      })}
-                      {lessons.length === 0 && (
-                        <tr>
-                          <td colSpan={3} className="px-6 py-12 text-center text-slate-400">
-                            <div className="flex flex-col items-center gap-3">
-                              <BookOpen size={40} className="text-slate-200" />
-                              <p>{lang === 'kh' ? 'មិនទាន់មានមេរៀននៅឡើយទេ' : 'No lessons created yet'}</p>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <HomePage
+                lang={lang}
+                folders={uiFolders}
+                lessons={uiLessons}
+                onOpenLesson={setActiveLessonId}
+                onEditLesson={(id) => {
+                  setActiveLessonId(id);
+                  setIsEditing(true);
+                }}
+                onAddFolder={addFolder}
+                onAddLesson={promptAddLesson}
+                onSearch={() => setShowSearchModal(true)}
+                onTemplates={(folderId) => {
+                  setTemplateFolderId(folderId);
+                  setShowTemplateModal(true);
+                }}
+              />
             )}
           </AnimatePresence>
         </main>

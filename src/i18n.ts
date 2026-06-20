@@ -9,7 +9,7 @@ export type Language = 'kh' | 'en';
 
 export const translations = {
   kh: {
-    documentTabs: 'Testing fox',
+    documentTabs: 'ផ្ទាំងឯកសារ',
     createTab: 'បង្កើតផ្ទាំងថ្មី',
     addLesson: 'បន្ថែមមេរៀនថ្មី...',
     edit: 'កែសម្រួល',
@@ -168,7 +168,7 @@ export const translations = {
 *   មានគំរូស្រាប់សម្រាប់៖ Resume, របាយការណ៍, គម្រោងផ្សេងៗ`
   },
   en: {
-    documentTabs: 'DOCUMENT TABS',
+    documentTabs: 'Document tabs',
     createTab: 'Create New Tab',
     addLesson: 'Add New Lesson...',
     edit: 'Edit',
