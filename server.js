@@ -100,14 +100,26 @@ const initDb = async () => {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_lesson_shares_token ON lesson_shares(token);');
 };
 
-const dbReady = initDb().catch((error) => {
-  console.error('Failed to initialize PostgreSQL schema:', error);
-  throw error;
+let dbReady = null;
+const ensureDb = () => {
+  if (!dbReady) {
+    dbReady = initDb().catch((error) => {
+      dbReady = null;
+      console.error('Failed to initialize PostgreSQL schema:', error);
+      throw error;
+    });
+  }
+  return dbReady;
+};
+
+app.get('/api/ping', (_req, res) => {
+  res.json({ ok: true, vercel: Boolean(process.env.VERCEL) });
 });
 
-app.use(async (_req, _res, next) => {
+app.use(async (req, res, next) => {
+  if (req.path === '/api/ping') return next();
   try {
-    await dbReady;
+    await ensureDb();
     next();
   } catch (error) {
     next(error);
@@ -506,7 +518,7 @@ export default app;
 
 const isServerless = Boolean(process.env.VERCEL);
 if (!isServerless) {
-  dbReady
+  ensureDb()
     .then(() => {
       app.listen(PORT, () => {
         console.log(`Postgres API running on http://localhost:${PORT} (${dbLabel})`);

@@ -1,6 +1,5 @@
 import pg from 'pg';
 import { neonConfig, Pool as NeonPool } from '@neondatabase/serverless';
-import ws from 'ws';
 
 function shouldUseSsl(connectionString) {
   if (process.env.PGSSLMODE === 'disable') return false;
@@ -37,7 +36,7 @@ export function createPool() {
     const ssl = shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined;
 
     if (process.env.VERCEL && connectionString.includes('neon.tech')) {
-      neonConfig.webSocketConstructor = ws;
+      neonConfig.fetchConnectionCache = true;
       return new NeonPool({
         connectionString,
         max: Number(process.env.PGPOOL_MAX || 1),
