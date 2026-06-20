@@ -1,6 +1,6 @@
 /** Elements that should not be cut by manual page slices (html2canvas ignores CSS break-inside). */
 export const PDF_BREAK_AVOID_SELECTOR =
-  '[data-export-code-block], .pdf-code-block, table, blockquote, .katex-display, img, h1, h2, h3, #content li';
+  '[data-export-code-block], [data-code-block-wrap], .pdf-export-code-block, .pdf-code-block, pre, table, blockquote, .katex-display, img, h1, h2, h3, #content li';
 
 export type PdfPageSlice = {
   offsetY: number;
@@ -8,6 +8,8 @@ export type PdfPageSlice = {
   /** White space at top of PDF page (page 2+), matching first-page margin. */
   topPadPx: number;
 };
+
+const MIN_SLICE_PX = 56;
 
 export function getBoundsRelativeToRoot(
   root: HTMLElement,
@@ -26,6 +28,34 @@ export function getBoundsRelativeToRoot(
 export function getTopLevelBreakAvoidElements(root: HTMLElement): HTMLElement[] {
   const all = Array.from(root.querySelectorAll(PDF_BREAK_AVOID_SELECTOR)) as HTMLElement[];
   return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
+}
+
+function getCodePreElement(el: HTMLElement): HTMLElement | null {
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'pre') return el;
+  const pre = el.querySelector('pre');
+  return pre instanceof HTMLElement ? pre : null;
+}
+
+/** Snap page break to the last full line of a pre/code block above sliceEnd. */
+function snapSliceEndToPreLineBoundary(
+  root: HTMLElement,
+  pre: HTMLElement,
+  sliceEnd: number,
+  offsetY: number
+): number | null {
+  const rootTop = root.getBoundingClientRect().top;
+  const rects = Array.from(pre.getClientRects());
+  if (!rects.length) return null;
+
+  let best: number | null = null;
+  for (const rect of rects) {
+    const bottom = rect.bottom - rootTop;
+    if (bottom <= sliceEnd - 2 && bottom > offsetY + MIN_SLICE_PX) {
+      best = bottom;
+    }
+  }
+  return best;
 }
 
 /**
@@ -64,7 +94,28 @@ export function computeSmartPageSlices(
         const crossesBreak = top < sliceEnd - 1 && bottom > sliceEnd + 1;
         if (!crossesBreak) continue;
 
+        const pre = getCodePreElement(el);
+
+        // Whole block fits on one page — start it on the next page instead of cutting
         if (height <= maxSlice + 1 && top > offsetY + 1) {
+          breakBefore = Math.min(breakBefore, top);
+          continue;
+        }
+
+        // Tall code block — break on full lines, never mid-line
+        if (pre) {
+          const snapped = snapSliceEndToPreLineBoundary(root, pre, sliceEnd, offsetY);
+          if (snapped != null) {
+            breakBefore = Math.min(breakBefore, snapped);
+            continue;
+          }
+          if (top > offsetY + 1) {
+            breakBefore = Math.min(breakBefore, top);
+          }
+          continue;
+        }
+
+        if (top > offsetY + 1) {
           breakBefore = Math.min(breakBefore, top);
         }
       }
