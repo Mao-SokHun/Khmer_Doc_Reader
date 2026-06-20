@@ -1,0 +1,18 @@
+{
+  "name": "Khmer Lesson Doc",
+  "short_name": "KhmerDoc",
+  "description": "Smart lesson manager for Khmer teachers",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#2563eb",
+  "lang": "km",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

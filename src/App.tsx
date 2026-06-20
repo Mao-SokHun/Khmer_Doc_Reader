@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { Folder, Lesson } from './types';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Folder, Lesson, SharedLessonPayload } from './types';
 import { cn } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
 import { DocViewer } from './components/DocViewer';
+import { PdfExportPreview } from './components/PdfExportPreview';
 import { Editor } from './components/Editor';
 import { translations, Language } from './i18n';
 import { GoogleGenAI } from "@google/genai";
@@ -21,14 +22,37 @@ import {
   Check,
   Copy,
   Lock,
-  History
+  History,
+  Search,
+  CopyPlus,
+  FileDown,
+  Presentation,
+  MoreHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import html2canvas from 'html2canvas';
+import { ThemeToggle } from './components/ThemeToggle';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
+import { PresentationMode } from './components/PresentationMode';
+import { TemplatePickerModal } from './components/TemplatePickerModal';
+import { getOwnerId, getOwnerLabel } from './lib/auth';
+import { loadFontSize, saveFontSize } from './lib/preferences';
+import type { LessonTemplate } from './lib/templates';
+import { getTemplateContent } from './lib/templates';
+import type { SearchResult } from './lib/search';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import {
+  buildPdfStyleVars,
+  getContinuationPageTopPad,
+  waitForPreviewExportReady,
+} from './lib/pdfExport';
+import type { PdfPageSlice } from './lib/pdfPageBreaks';
+import {
+  mountExportIframeFromPreview,
+  measureExportRootPageSlices,
+  renderPdfFromPreview,
+  unmountExportIframe,
+} from './lib/pdfRenderFromPreview';
 import { jsPDF } from 'jspdf';
-import { buildLessonPdfDocumentHtml, buildPdfStyleVars } from './lib/pdfExport';
-
-const GUEST_ID = 'guest';
 
 export default function App() {
   type LessonSnapshot = {
@@ -49,6 +73,7 @@ export default function App() {
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [pdfExportReady, setPdfExportReady] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const exportPageOptions: Array<{ key: ExportPageSize; label: string; width: number; height: number }> = [
     { key: 'a5', label: 'A5', width: 559, height: 794 },
@@ -64,34 +89,58 @@ export default function App() {
   const [exportSettings, setExportSettings] = useState({
     pageSize: 'a4' as ExportPageSize,
     orientation: 'portrait' as 'portrait' | 'landscape',
-    margins: 20,
+    margins: 32,
     startPage: 1,
     endPage: 1,
     useCustomRange: false,
   });
   const [totalPages, setTotalPages] = useState(1);
+  const [pdfPageSlices, setPdfPageSlices] = useState<PdfPageSlice[]>([
+    { offsetY: 0, sliceHeight: 1, topPadPx: 0 },
+  ]);
   const [lang, setLang] = useState<Language>('kh');
-  const [fontSize, setFontSize] = useState(14);
+  const [fontSize, setFontSize] = useState(() => loadFontSize());
+  const ownerId = useMemo(() => getOwnerId(), []);
+  const ownerLabel = useMemo(() => getOwnerLabel(), [ownerId]);
+  const [sharedPayload, setSharedPayload] = useState<SharedLessonPayload | null>(null);
+  const [shareLoadError, setShareLoadError] = useState<string | null>(null);
+  const [loadingShared, setLoadingShared] = useState(false);
+  const [workspaceLoadError, setWorkspaceLoadError] = useState<string | null>(null);
+  const [editorContentReloadKey, setEditorContentReloadKey] = useState(0);
+  const shareTokenFromUrl = useMemo(
+    () => new URLSearchParams(window.location.search).get('share'),
+    []
+  );
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showPresentation, setShowPresentation] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateFolderId, setTemplateFolderId] = useState<string | null>(null);
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [shareAccess, setShareAccess] = useState<'anyone' | 'restricted'>('anyone');
   const [shareRole, setShareRole] = useState<'viewer' | 'commenter' | 'editor'>('viewer');
   const [translateTarget, setTranslateTarget] = useState('en');
-  const [showTranslateMenu, setShowTranslateMenu] = useState(false);
+  const [showHeaderMoreMenu, setShowHeaderMoreMenu] = useState(false);
   const [lessonSnapshots, setLessonSnapshots] = useState<LessonSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [navigateToText, setNavigateToText] = useState<string | null>(null);
+  const [navigateToHeadingId, setNavigateToHeadingId] = useState<string | null>(null);
   const [navigateToSeq, setNavigateToSeq] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const sidebarResizeRafRef = useRef<number | null>(null);
   const pendingSidebarWidthRef = useRef(300);
-  const translateMenuRef = useRef<HTMLDivElement | null>(null);
+  const headerMoreMenuRef = useRef<HTMLDivElement | null>(null);
 
   const t = translations[lang];
-  const apiBaseUrl = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:3001';
+  const apiBaseUrl =
+    (import.meta as any).env?.VITE_API_BASE_URL ??
+    ((import.meta as any).env?.PROD ? '' : 'http://localhost:3001');
 
   const apiFetch = async <T,>(path: string, init?: RequestInit): Promise<T> => {
     const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -202,12 +251,36 @@ export default function App() {
   }, [isResizingSidebar]);
 
   useEffect(() => {
+    if (!shareTokenFromUrl) return;
+    let cancelled = false;
+    setLoadingShared(true);
+    apiFetch<SharedLessonPayload>(`/api/share/${encodeURIComponent(shareTokenFromUrl)}`)
+      .then((payload) => {
+        if (!cancelled) setSharedPayload(payload);
+      })
+      .catch((e) => {
+        if (!cancelled) setShareLoadError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingShared(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shareTokenFromUrl]);
+
+  useEffect(() => {
+    if (sharedPayload || isEditing) return;
     let cancelled = false;
     const run = async () => {
       try {
-        await loadWorkspace(GUEST_ID);
+        await loadWorkspace(ownerId);
+        if (!cancelled) setWorkspaceLoadError(null);
       } catch (e) {
-        if (!cancelled) console.error('Load workspace failed:', e);
+        if (!cancelled) {
+          console.error('Load workspace failed:', e);
+          setWorkspaceLoadError(e instanceof Error ? e.message : String(e));
+        }
       }
     };
     run();
@@ -216,7 +289,30 @@ export default function App() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [lang]);
+  }, [lang, ownerId, sharedPayload, isEditing]);
+
+  useEffect(() => {
+    if (!showShareModal || !activeLessonId) {
+      setShareToken(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await apiFetch<{ token: string }>(`/api/lessons/${activeLessonId}/share`, {
+          method: 'POST',
+          body: JSON.stringify({ ownerId, role: shareRole, access: shareAccess }),
+        });
+        if (!cancelled) setShareToken(result.token);
+      } catch (e) {
+        console.error('Create share link failed:', e);
+        if (!cancelled) setShareToken(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showShareModal, activeLessonId, shareRole, shareAccess, ownerId]);
 
   const activeLesson = lessons.find(l => l.id === activeLessonId);
   const pdfPreviewContainerRef = useRef<HTMLDivElement>(null);
@@ -232,46 +328,49 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!showExportModal || !activeLesson) return;
+    if (!showExportModal || !activeLesson) {
+      setPdfExportReady(false);
+      return;
+    }
 
     let cancelled = false;
-    const calculatePages = async () => {
-      const tempIframe = document.createElement('iframe');
-      tempIframe.style.position = 'fixed';
-      tempIframe.style.left = '-9999px';
-      tempIframe.style.visibility = 'hidden';
-      document.body.appendChild(tempIframe);
+    setPdfExportReady(false);
 
+    const calculatePages = async () => {
+      let mount: Awaited<ReturnType<typeof mountExportIframeFromPreview>> | null = null;
       try {
-        const html = await buildLessonPdfDocumentHtml({
-          previewContainer: pdfPreviewContainerRef.current,
-          lang,
-          lessonTitle: activeLesson.title,
+        await new Promise((r) => setTimeout(r, 120));
+        if (cancelled) return;
+
+        const wrapper = await waitForPreviewExportReady(pdfPreviewContainerRef.current);
+        if (cancelled) return;
+
+        const dims = getPageDimensions(exportSettings.pageSize);
+        const pdfPageWidth =
+          exportSettings.orientation === 'portrait' ? dims.width : dims.height;
+        const pdfPageHeight =
+          exportSettings.orientation === 'portrait' ? dims.height : dims.width;
+
+        mount = await mountExportIframeFromPreview({
+          previewRoot: wrapper,
           styleVars: exportPdfStyleVars,
+          lessonTitle: activeLesson.title,
+          printWidth: exportPrintWidth,
         });
         if (cancelled) return;
 
-        const iframeDoc = tempIframe.contentDocument || tempIframe.contentWindow?.document;
-        if (!iframeDoc) return;
-        iframeDoc.open();
-        iframeDoc.write(html);
-        iframeDoc.close();
-        await new Promise((r) => setTimeout(r, 250));
-        if (cancelled) return;
-
-        const wrapper = iframeDoc.getElementById('export-wrapper');
-        const contentHeight = wrapper?.scrollHeight ?? iframeDoc.body.scrollHeight;
-        const pageHeights = exportPageOptions.reduce<Record<ExportPageSize, number>>((acc, opt) => {
-          acc[opt.key] = exportSettings.orientation === 'portrait' ? opt.height : opt.width;
-          return acc;
-        }, {} as Record<ExportPageSize, number>);
-        const pdfPageHeight = pageHeights[exportSettings.pageSize];
-        const exportWidthPx = wrapper?.scrollWidth ?? exportPrintWidth;
-        const pageHeightPx = Math.max(1, Math.floor((pdfPageHeight * exportWidthPx) / exportPrintWidth));
-        const estimatedPages = Math.max(1, Math.ceil(contentHeight / pageHeightPx));
+        const pageSlices = measureExportRootPageSlices(
+          mount.exportRoot,
+          pdfPageWidth,
+          pdfPageHeight,
+          getContinuationPageTopPad(exportPdfStyleVars)
+        );
+        const estimatedPages = pageSlices.length;
 
         if (!cancelled) {
+          setPdfPageSlices(pageSlices);
           setTotalPages(estimatedPages);
+          setPdfExportReady(true);
           setExportSettings((s) => {
             const shouldUpdateEnd =
               !s.useCustomRange || s.endPage > estimatedPages || s.endPage === totalPages;
@@ -281,8 +380,13 @@ export default function App() {
             };
           });
         }
+      } catch {
+        if (!cancelled) {
+          setPdfPageSlices([{ offsetY: 0, sliceHeight: 1, topPadPx: 0 }]);
+          setTotalPages(1);
+        }
       } finally {
-        document.body.removeChild(tempIframe);
+        if (mount) unmountExportIframe(mount.iframe);
       }
     };
 
@@ -358,7 +462,7 @@ export default function App() {
     setLoadingSnapshots(true);
     try {
       const rows = await apiFetch<LessonSnapshot[]>(
-        `/api/lessons/${activeLessonId}/snapshots?ownerId=${encodeURIComponent(GUEST_ID)}&limit=40`
+        `/api/lessons/${activeLessonId}/snapshots?ownerId=${encodeURIComponent(ownerId)}&limit=40`
       );
       setLessonSnapshots(rows);
     } catch (e) {
@@ -375,9 +479,10 @@ export default function App() {
     try {
       const restored = await apiFetch<Lesson>(`/api/lessons/${activeLessonId}/restore/${snapshotId}`, {
         method: 'POST',
-        body: JSON.stringify({ ownerId: GUEST_ID }),
+        body: JSON.stringify({ ownerId: ownerId }),
       });
       setLessons((prev) => prev.map((lesson) => (lesson.id === restored.id ? restored : lesson)));
+      setEditorContentReloadKey((k) => k + 1);
       await loadLessonSnapshots();
     } catch (e) {
       console.error('Restore snapshot failed:', e);
@@ -385,12 +490,24 @@ export default function App() {
       setRestoringSnapshotId(null);
     }
   };
-  const handleSelectLesson = (id: string, focusText?: string) => {
+  const handleSelectLesson = (id: string, focusText?: string, headingId?: string) => {
     setActiveLessonId(id);
+    if (headingId) {
+      setIsEditing(false);
+      setActiveHeadingId(headingId);
+      setNavigateToHeadingId(headingId);
+      setNavigateToText(focusText?.trim() || null);
+      setNavigateToSeq((s) => s + 1);
+      return;
+    }
     if (focusText?.trim()) {
+      setNavigateToHeadingId(null);
       setNavigateToText(focusText.trim());
       setNavigateToSeq((s) => s + 1);
+      return;
     }
+    setNavigateToHeadingId(null);
+    setNavigateToText(null);
   };
 
   const handleDownloadPDF = async (settings: typeof exportSettings) => {
@@ -398,137 +515,39 @@ export default function App() {
     setIsExporting(true);
     
     try {
+      const previewRoot = await waitForPreviewExportReady(pdfPreviewContainerRef.current);
       const selectedDims = getPageDimensions(settings.pageSize);
-      const printWidth = settings.orientation === 'portrait' ? selectedDims.width : selectedDims.height;
-      const styleVars = buildPdfStyleVars(fontSize, printWidth, settings.margins);
-      const cleanHtml = await buildLessonPdfDocumentHtml({
-        previewContainer: pdfPreviewContainerRef.current,
-        lang,
-        lessonTitle: activeLesson.title,
-        styleVars,
+      const printWidth =
+        settings.orientation === 'portrait' ? selectedDims.width : selectedDims.height;
+
+      const pdf = new jsPDF({
+        orientation: settings.orientation as any,
+        unit: 'px',
+        format: settings.pageSize,
       });
 
-      // 1. Create a hidden iframe for clean rendering
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.left = '-9999px';
-      iframe.style.top = '-9999px';
-      
-      iframe.style.width = `${printWidth}px`;
-      iframe.style.height = 'auto';
-      document.body.appendChild(iframe);
+      const start = settings.useCustomRange ? Math.max(1, settings.startPage) : 1;
+      const end = settings.useCustomRange ? settings.endPage : Number.MAX_SAFE_INTEGER;
 
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!iframeDoc) throw new Error('Could not create export iframe');
+      await renderPdfFromPreview({
+        previewRoot,
+        pdf,
+        lang,
+        styleVars: exportPdfStyleVars,
+        lessonTitle: activeLesson.title,
+        printWidth,
+        startPage: start,
+        endPage: end,
+        pageSize: settings.pageSize,
+        orientation: settings.orientation,
+      });
 
       const safeTitle = (activeLesson.title || 'lesson')
         .replace(/[/\\?%*:|"<>]/g, '-')
         .replace(/[&]/g, 'and')
         .replace(/\s+/g, ' ')
         .trim() || 'lesson';
-      iframeDoc.open();
-      iframeDoc.write(cleanHtml);
-      iframeDoc.close();
 
-      // 3. Wait for content to load (fonts and images)
-      await new Promise(resolve => setTimeout(resolve, 800));
-      if ('fonts' in iframeDoc) {
-        await (iframeDoc as any).fonts.ready;
-      }
-
-      const contentToExport = iframeDoc.getElementById('export-wrapper');
-      if (!contentToExport) throw new Error('Iframe content not found');
-
-      const pdf = new jsPDF({
-        orientation: settings.orientation as any,
-        unit: 'px',
-        format: settings.pageSize
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-
-      // 4. Render page-by-page to avoid clipping/warping on long documents
-      const exportWidthPx = Math.ceil(contentToExport.scrollWidth);
-      const totalHeightPx = Math.ceil(contentToExport.scrollHeight);
-      const pageHeightPx = Math.max(1, Math.floor((pdfHeight * exportWidthPx) / pdfWidth));
-      const totalPagesCalculated = Math.max(1, Math.ceil(totalHeightPx / pageHeightPx));
-
-      const start = settings.useCustomRange ? Math.max(1, settings.startPage) : 1;
-      const end = settings.useCustomRange ? Math.min(totalPagesCalculated, settings.endPage) : totalPagesCalculated;
-      const scale = 2;
-      // Use outerHTML so the #export-wrapper div (with its padding/width CSS) is preserved
-      // during each page slice render — prevents text reflow vs. the measured totalHeightPx.
-      const sourceHtml = contentToExport.outerHTML;
-
-      for (let i = start - 1; i < end; i++) {
-        const offsetY = i * pageHeightPx;
-        const currentPageHeightPx = Math.min(pageHeightPx, Math.max(1, totalHeightPx - offsetY));
-
-        const pageViewport = iframeDoc.createElement('div');
-        pageViewport.style.width = `${exportWidthPx}px`;
-        pageViewport.style.height = `${currentPageHeightPx}px`;
-        pageViewport.style.overflow = 'hidden';
-        pageViewport.style.position = 'relative';
-        pageViewport.style.background = '#ffffff';
-
-        const shiftedContent = iframeDoc.createElement('div');
-        shiftedContent.style.width = `${exportWidthPx}px`;
-        shiftedContent.style.transform = `translateY(-${offsetY}px)`;
-        shiftedContent.innerHTML = sourceHtml;
-        pageViewport.appendChild(shiftedContent);
-        iframeDoc.body.appendChild(pageViewport);
-
-        const canvas = await html2canvas(pageViewport, {
-          scale,
-          useCORS: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          width: exportWidthPx,
-          height: currentPageHeightPx,
-          windowWidth: exportWidthPx,
-          windowHeight: currentPageHeightPx
-        });
-
-        iframeDoc.body.removeChild(pageViewport);
-
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const imageRenderHeight = (canvas.height * pdfWidth) / canvas.width;
-
-        if (i > start - 1) {
-          pdf.addPage(settings.pageSize as any, settings.orientation as any);
-        }
-
-        pdf.addImage(
-          imgData,
-          'JPEG',
-          0,
-          0,
-          pdfWidth,
-          imageRenderHeight,
-          undefined,
-          'FAST'
-        );
-
-        const footerY = pdfHeight - 14;
-        const footerPad = 40;
-        const pageLabel = `${i + 1} / ${totalPagesCalculated}`;
-        const footerBrand = lang === 'kh' ? 'Khmer Lesson Doc' : 'Lesson Document';
-
-        pdf.setFillColor(255, 255, 255);
-        pdf.rect(0, pdfHeight - 36, pdfWidth, 36, 'F');
-        pdf.setDrawColor(226, 232, 240);
-        pdf.setLineWidth(0.5);
-        pdf.line(footerPad, pdfHeight - 30, pdfWidth - footerPad, pdfHeight - 30);
-        pdf.setFont('helvetica', 'normal');
-        pdf.setFontSize(8);
-        pdf.setTextColor(100, 116, 139);
-        pdf.text(footerBrand, footerPad, footerY);
-        pdf.text(pageLabel, pdfWidth / 2, footerY, { align: 'center' });
-        pdf.text(new Date().toLocaleDateString('en-GB'), pdfWidth - footerPad, footerY, { align: 'right' });
-      }
-
-      // Use a robust, DOM-appended anchor element to bypass Chrome's iframe download UUID fallback behavior.
       const blob = pdf.output('blob');
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -538,21 +557,22 @@ export default function App() {
       document.body.appendChild(link);
       link.click();
       
-      // Delay cleanup to ensure Chrome's download engine parses the filename before the Blob URL is revoked.
       setTimeout(() => {
         document.body.removeChild(link);
         URL.revokeObjectURL(blobUrl);
       }, 150);
 
-      // 5. Cleanup
-      document.body.removeChild(iframe);
+      setShowExportModal(false);
     } catch (error) {
       console.error('PDF Export failed:', error);
-      const errorMsg = lang === 'kh' ? 'បរាជ័យក្នុងការទាញយក PDF។ សូមព្យាយាមម្ដងទៀត។' : 'Failed to download PDF. Please try again.';
+      const detail = error instanceof Error ? error.message : String(error);
+      const errorMsg =
+        lang === 'kh'
+          ? `បរាជ័យក្នុងការទាញយក PDF។ សូមព្យាយាមម្ដងទៀត។\n(${detail})`
+          : `Failed to download PDF. Please try again.\n(${detail})`;
       alert(errorMsg);
     } finally {
       setIsExporting(false);
-      setShowExportModal(false);
     }
   };
 
@@ -567,7 +587,7 @@ export default function App() {
         method: 'POST',
         body: JSON.stringify({
           name,
-          ownerId: GUEST_ID,
+          ownerId: ownerId,
           order: folders.length,
         }),
       });
@@ -578,33 +598,12 @@ export default function App() {
     }
   };
 
-  const addLesson = async (folderId: string) => {
-    try {
-      const newLesson = await apiFetch<Lesson>('/api/lessons', {
-        method: 'POST',
-        body: JSON.stringify({
-          folderId,
-          title: t.newLessonTitle,
-          content: t.newLessonContent,
-          ownerId: GUEST_ID,
-          order: lessons.filter(l => l.folderId === folderId).length,
-        }),
-      });
-      setLessons((prev) => [...prev, newLesson].sort((a, b) => a.order - b.order));
-      setActiveLessonId(newLesson.id);
-      setIsEditing(true);
-    } catch (e) {
-      console.error(e);
-      alert(t.errorCreatingLesson);
-    }
-  };
-
   const handleReorderLessons = async (lessonIds: string[], folderId: string) => {
     try {
       await apiFetch<{ ok: boolean }>('/api/lessons/reorder', {
         method: 'POST',
         body: JSON.stringify({
-          ownerId: GUEST_ID,
+          ownerId: ownerId,
           folderId,
           lessonIds,
         }),
@@ -629,7 +628,7 @@ export default function App() {
         body: JSON.stringify({
           title,
           content,
-          createSnapshot: isAuto,
+          createSnapshot: true,
           triggerType: isAuto ? 'autosave' : 'manual',
         }),
       });
@@ -637,6 +636,9 @@ export default function App() {
         prev.map((lesson) => (lesson.id === activeLessonId ? { ...lesson, title, content } : lesson))
       );
       if (!isAuto) setIsEditing(false);
+      if (showHistoryModal) {
+        await loadLessonSnapshots();
+      }
     } catch (e) {
       console.error(e);
       if (!isAuto) alert(t.errorSavingLesson);
@@ -730,15 +732,124 @@ ${activeLesson.content}`;
     }
   };
 
+  const toggleFavorite = async (lessonId: string) => {
+    const lesson = lessons.find((l) => l.id === lessonId);
+    if (!lesson) return;
+    try {
+      const updated = await apiFetch<Lesson>(`/api/lessons/${lessonId}/meta`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ownerId, isFavorite: !lesson.isFavorite }),
+      });
+      setLessons((prev) => prev.map((l) => (l.id === lessonId ? updated : l)));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const duplicateActiveLesson = async () => {
+    if (!activeLessonId) return;
+    try {
+      const dup = await apiFetch<Lesson>(`/api/lessons/${activeLessonId}/duplicate`, {
+        method: 'POST',
+        body: JSON.stringify({ ownerId }),
+      });
+      setLessons((prev) => [...prev, dup].sort((a, b) => a.order - b.order));
+      setActiveLessonId(dup.id);
+      setIsEditing(false);
+    } catch (e) {
+      console.error(e);
+      alert(lang === 'kh' ? 'បរាជ័យក្នុងការចម្លងមេរៀន' : 'Failed to duplicate lesson');
+    }
+  };
+
+  const exportMarkdown = () => {
+    if (!activeLesson) return;
+    const safeTitle =
+      (activeLesson.title || 'lesson').replace(/[/\\?%*:|"<>]/g, '-').trim() || 'lesson';
+    const blob = new Blob([activeLesson.content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${safeTitle}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const promptAddLesson = (folderId: string) => {
+    setTemplateFolderId(folderId);
+    setShowTemplateModal(true);
+  };
+
+  const createLessonFromTemplate = async (template: LessonTemplate) => {
+    if (!templateFolderId) return;
+    const folderId = templateFolderId;
+    setTemplateFolderId(null);
+    try {
+      const title = lang === 'kh' ? template.titleKh : template.titleEn;
+      const newLesson = await apiFetch<Lesson>('/api/lessons', {
+        method: 'POST',
+        body: JSON.stringify({
+          folderId,
+          title,
+          content: getTemplateContent(template, lang),
+          ownerId,
+          order: lessons.filter((l) => l.folderId === folderId).length,
+        }),
+      });
+      setLessons((prev) => [...prev, newLesson].sort((a, b) => a.order - b.order));
+      setActiveLessonId(newLesson.id);
+      setIsEditing(true);
+    } catch (e) {
+      console.error(e);
+      alert(t.errorCreatingLesson);
+    }
+  };
+
+  const handleSearchSelect = (result: SearchResult) => {
+    setIsEditing(false);
+    if (result.headingId) {
+      handleSelectLesson(result.lessonId, result.snippet, result.headingId);
+      return;
+    }
+    handleSelectLesson(
+      result.lessonId,
+      result.matchType === 'content' ? result.snippet.replace(/^…|…$/g, '').trim() : undefined
+    );
+  };
+
+  const shareLink = shareToken
+    ? `${window.location.origin}${window.location.pathname}?share=${shareToken}`
+    : '';
+
+  const keyboardShortcuts = useMemo(
+    () => ({
+      'ctrl+k': () => setShowSearchModal(true),
+      ...(activeLesson && !isEditing
+        ? {
+            'ctrl+e': () => setIsEditing(true),
+            'ctrl+p': () => setShowPresentation(true),
+          }
+        : {}),
+    }),
+    [activeLesson, isEditing]
+  );
+  useKeyboardShortcuts(!sharedPayload, keyboardShortcuts);
+
+  useEffect(() => {
+    saveFontSize(fontSize);
+  }, [fontSize]);
+
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
 
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
-      if (!translateMenuRef.current) return;
-      if (!translateMenuRef.current.contains(e.target as Node)) {
-        setShowTranslateMenu(false);
+      if (!headerMoreMenuRef.current) return;
+      if (!headerMoreMenuRef.current.contains(e.target as Node)) {
+        setShowHeaderMoreMenu(false);
       }
     };
     document.addEventListener('mousedown', onMouseDown);
@@ -750,22 +861,71 @@ ${activeLesson.content}`;
     loadLessonSnapshots();
   }, [showHistoryModal, activeLessonId]);
 
+  if (loadingShared) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#f8f9fa] dark:bg-slate-950">
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+      </div>
+    );
+  }
 
+  if (shareTokenFromUrl && shareLoadError && !sharedPayload) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[#f8f9fa] px-6 dark:bg-slate-950">
+        <BookOpen size={32} className="text-red-500" />
+        <p className="max-w-md text-center text-red-600 dark:text-red-400">
+          {lang === 'kh' ? 'មិនអាចបើកតំណចែករំលែកបានទេ។' : 'Could not open this share link.'}
+        </p>
+        <p className="max-w-md text-center text-sm text-slate-500">{shareLoadError}</p>
+        <a
+          href="/"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          {lang === 'kh' ? 'ទៅទំព័រដើម' : 'Go to home'}
+        </a>
+      </div>
+    );
+  }
+
+  if (sharedPayload) {
+    const sharedLesson = sharedPayload.lesson;
+    return (
+      <div className="flex h-screen w-full flex-col bg-[#f8f9fa] dark:bg-slate-950 font-sans overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 lg:px-5">
+          <div className="flex min-w-0 items-center gap-2">
+            <BookOpen size={16} className="text-blue-500" />
+            <span className="truncate font-bold text-slate-800 dark:text-slate-100">{sharedLesson.title}</span>
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+              {lang === 'kh' ? 'មើលប៉ុណ្ណោះ' : 'View only'}
+            </span>
+          </div>
+          <ThemeToggle lightLabel={t.lightMode} darkLabel={t.darkMode} />
+        </header>
+        <main className="flex-1 overflow-y-auto">
+          <DocViewer content={sharedLesson.content} fontSize={fontSize} readOnly />
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-screen w-full bg-[#f8f9fa] font-sans overflow-hidden">
+    <div className="flex h-screen w-full bg-[#f8f9fa] dark:bg-slate-950 font-sans overflow-hidden transition-colors">
       <div className="relative h-full shrink-0" style={{ width: `${sidebarWidth}px` }}>
         <Sidebar
           folders={uiFolders}
           lessons={uiLessons}
           activeLessonId={activeLessonId}
+          activeHeadingId={activeHeadingId}
+          showFavoritesOnly={showFavoritesOnly}
           onSelectLesson={handleSelectLesson}
           onAddFolder={addFolder}
-          onAddLesson={addLesson}
+          onAddLesson={promptAddLesson}
           onDeleteFolder={deleteFolder}
           onUpdateFolder={updateFolder}
           onDeleteLesson={deleteLesson}
           onReorderLessons={handleReorderLessons}
+          onToggleFavorite={toggleFavorite}
+          onToggleFavoritesOnly={() => setShowFavoritesOnly((v) => !v)}
           t={t}
         />
         <div
@@ -781,33 +941,55 @@ ${activeLesson.content}`;
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 lg:px-5 z-10">
-          <div className="flex min-w-0 items-center gap-2">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 lg:px-4 z-10 transition-colors">
+          <div className="min-w-0 flex-1 overflow-hidden pr-2">
             {activeLesson && (
-              <div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-400">
-                <BookOpen size={16} />
-                <span className="hidden sm:inline font-medium truncate max-w-[120px]">{uiFolders.find(f => f.id === activeLesson.folderId)?.name}</span>
-                <ChevronRight size={12} className="text-slate-200 hidden sm:inline" />
-                <span className="font-bold text-slate-800 truncate max-w-[220px] lg:max-w-[320px]">{localizeSeedLabel(activeLesson.title)}</span>
+              <div className="flex min-w-0 items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                <BookOpen size={14} className="shrink-0" />
+                <span className="hidden md:inline truncate max-w-[100px] lg:max-w-[140px]">
+                  {uiFolders.find((f) => f.id === activeLesson.folderId)?.name}
+                </span>
+                <ChevronRight size={12} className="hidden md:inline shrink-0 opacity-50" />
+                <span className="truncate font-semibold text-slate-800 dark:text-slate-100">
+                  {localizeSeedLabel(activeLesson.title)}
+                </span>
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowSearchModal(true)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title={`${t.search} (Ctrl+K)`}
+            >
+              <Search size={16} />
+            </button>
+
+            <ThemeToggle lightLabel={t.lightMode} darkLabel={t.darkMode} />
+
+            <div className="flex items-center rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
               <button
+                type="button"
                 onClick={() => setLang('kh')}
                 className={cn(
-                  "px-2 py-1 text-[11px] font-bold rounded-md transition-all",
-                  lang === 'kh' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  'px-1.5 py-0.5 text-[10px] font-bold rounded-md transition-all',
+                  lang === 'kh'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400'
                 )}
               >
                 KH
               </button>
               <button
+                type="button"
                 onClick={() => setLang('en')}
                 className={cn(
-                  "px-2 py-1 text-[11px] font-bold rounded-md transition-all",
-                  lang === 'en' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  'px-1.5 py-0.5 text-[10px] font-bold rounded-md transition-all',
+                  lang === 'en'
+                    ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400'
                 )}
               >
                 EN
@@ -815,77 +997,136 @@ ${activeLesson.content}`;
             </div>
 
             {activeLesson && !isEditing && (
-              <div className="flex items-center gap-2">
-                <div ref={translateMenuRef} className="relative">
+              <>
+                <div className="mx-0.5 hidden sm:block h-5 w-px bg-slate-200 dark:bg-slate-700" />
+
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(true)}
+                  disabled={isExporting}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  title={t.downloadPdf}
+                >
+                  {isExporting ? (
+                    <Loader2 size={16} className="animate-spin text-blue-500" />
+                  ) : (
+                    <Download size={16} className="text-red-500" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+                  title={t.edit}
+                >
+                  <Edit3 size={14} />
+                  <span className="hidden sm:inline">{t.edit}</span>
+                </button>
+
+                <div ref={headerMoreMenuRef} className="relative">
                   <button
-                    onClick={() => !isTranslating && setShowTranslateMenu((s) => !s)}
-                    disabled={isTranslating}
-                    className="flex items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
-                    title={t.translate}
+                    type="button"
+                    onClick={() => setShowHeaderMoreMenu((s) => !s)}
+                    className={cn(
+                      'inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors',
+                      showHeaderMoreMenu && 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                    )}
+                    title={lang === 'kh' ? 'ផ្សេងទៀត' : 'More'}
                   >
-                    {isTranslating ? <Loader2 size={15} className="animate-spin text-blue-500" /> : <Languages size={15} className="text-blue-500" />}
-                    <span className="hidden xl:inline">
-                      {isTranslating ? t.translating : `${t.translate}: ${translateLanguageOptions.find((o) => o.code === translateTarget)?.label || 'English'}`}
-                    </span>
-                    <ChevronDown size={14} className={cn("text-slate-400 transition-transform", showTranslateMenu && "rotate-180")} />
+                    <MoreHorizontal size={16} />
                   </button>
-                  {showTranslateMenu && !isTranslating && (
-                    <div className="absolute left-0 top-full mt-1 min-w-[180px] rounded-xl border border-slate-200 bg-white shadow-xl z-30 py-1">
+                  {showHeaderMoreMenu && (
+                    <div className="absolute right-0 top-full mt-1 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1 shadow-xl z-40">
+                      <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        {lang === 'kh' ? 'ផ្សេងទៀត' : 'More actions'}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={isTranslating}
+                        onClick={() => {
+                          setShowPresentation(true);
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                      >
+                        <Presentation size={14} className="text-indigo-500" />
+                        {t.presentation}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          exportMarkdown();
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        <FileDown size={14} className="text-emerald-500" />
+                        {t.exportMarkdown}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          duplicateActiveLesson();
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        <CopyPlus size={14} className="text-violet-500" />
+                        {t.duplicate}
+                      </button>
+                      <div className="my-1 border-t border-slate-100 dark:border-slate-700" />
+                      <p className="px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                        {t.translate}
+                      </p>
                       {translateLanguageOptions.map((option) => (
                         <button
                           key={option.code}
                           type="button"
+                          disabled={isTranslating}
                           onClick={async () => {
                             setTranslateTarget(option.code);
-                            setShowTranslateMenu(false);
+                            setShowHeaderMoreMenu(false);
                             await handleTranslateContent(option.code);
                           }}
                           className={cn(
-                            "w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50",
-                            translateTarget === option.code ? "text-blue-700 font-semibold" : "text-slate-700"
+                            'flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50',
+                            translateTarget === option.code
+                              ? 'font-semibold text-blue-600 dark:text-blue-300'
+                              : 'text-slate-700 dark:text-slate-200'
                           )}
                         >
+                          {isTranslating && translateTarget === option.code ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Languages size={12} className="text-blue-500" />
+                          )}
                           {option.label}
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
-                <button
-                  onClick={() => setShowExportModal(true)}
-                  disabled={isExporting}
-                  className="flex items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50"
-                  title={t.downloadPdf}
-                >
-                  {isExporting ? <Loader2 size={15} className="animate-spin text-blue-500" /> : <Download size={15} className="text-red-500" />}
-                  <span className="hidden xl:inline">{t.downloadPdf}</span>
-                </button>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-1.5 rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:border-slate-300"
-                >
-                  <Edit3 size={15} className="text-blue-500" />
-                  <span className="hidden xl:inline">{t.edit}</span>
-                </button>
-              </div>
+              </>
             )}
-            <div className="h-5 w-px bg-slate-200 hidden md:block" />
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-sm">
-                <BookOpen size={15} className="text-white" />
-              </div>
-              <span className="text-[11px] font-bold text-slate-600 hidden lg:block">
-                {lang === 'kh' ? 'ភ្ញៀវ' : 'Guest'}
-              </span>
-            </div>
+
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        <main className={cn('flex-1 min-h-0', isEditing ? 'overflow-hidden' : 'overflow-y-auto')}>
+          {workspaceLoadError ? (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              {lang === 'kh' ? 'មិនអាចផ្ទុកទិន្នន័យបានទេ។ ពិនិត្យការតភ្ជាប់ API។' : 'Could not load workspace. Check API connection.'}{' '}
+              <span className="opacity-75">{workspaceLoadError}</span>
+            </div>
+          ) : null}
           <AnimatePresence mode="wait">
             {activeLesson ? (
               isEditing ? (
+                <div className="h-full min-h-0">
                 <Editor
+                  lessonId={activeLesson.id}
+                  contentReloadKey={editorContentReloadKey}
                   initialTitle={activeLesson.title}
                   initialContent={activeLesson.content}
                   onSave={saveLesson}
@@ -896,8 +1137,10 @@ ${activeLesson.content}`;
                   onShowShare={() => setShowShareModal(true)}
                   onShowHistory={() => setShowHistoryModal(true)}
                   navigateToText={navigateToText || undefined}
+                  navigateToHeadingId={navigateToHeadingId || undefined}
                   navigateToSeq={navigateToSeq}
                 />
+                </div>
               ) : (
                 <motion.div
                   key={activeLesson.id}
@@ -910,7 +1153,9 @@ ${activeLesson.content}`;
                       content={activeLesson.content}
                       fontSize={fontSize}
                       navigateToText={navigateToText || undefined}
+                      navigateToHeadingId={navigateToHeadingId || undefined}
                       navigateToSeq={navigateToSeq}
+                      onActiveHeadingChange={setActiveHeadingId}
                     />
                 </motion.div>
               )
@@ -918,38 +1163,38 @@ ${activeLesson.content}`;
               <div className="p-8 lg:p-12 mx-auto max-w-5xl">
                 <div className="mb-12 flex items-center justify-between">
                   <div>
-                    <h1 className="text-3xl font-bold text-slate-900">{t.documentTabs}</h1>
-                    <p className="text-slate-500 mt-2">{lang === 'kh' ? 'ទិដ្ឋភាពទូទៅនៃមេរៀនទាំងអស់របស់អ្នក' : 'Overview of all your lessons'}</p>
+                    <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">{t.documentTabs}</h1>
+                    <p className="text-slate-500 dark:text-slate-400 mt-2">{lang === 'kh' ? 'ទិដ្ឋភាពទូទៅនៃមេរៀនទាំងអស់របស់អ្នក' : 'Overview of all your lessons'}</p>
                   </div>
                   <button 
                     onClick={addFolder}
-                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-bold text-white shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-bold text-white shadow-lg shadow-blue-200/80 dark:shadow-blue-950/50 hover:bg-blue-700 dark:hover:bg-blue-500 transition-all active:scale-95"
                   >
                     <Plus size={20} />
-                    {lang === 'kh' ? 'បង្កើត Tab ថ្មី' : 'Create New Tab'}
+                    {t.createTab}
                   </button>
                 </div>
 
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100">
+                      <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">{lang === 'kh' ? 'ឈ្មោះមេរៀន' : 'Lesson Title'}</th>
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">{lang === 'kh' ? 'ស្ថិតក្នុង Tab' : 'In Tab'}</th>
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 text-right">{lang === 'kh' ? 'សកម្មភាព' : 'Actions'}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                       {uiFolders.map(folder => {
                         const folderLessons = uiLessons.filter(l => l.folderId === folder.id);
                         if (folderLessons.length === 0) return null;
                         
                         return folderLessons.map((lesson) => (
-                          <tr key={lesson.id} className="group hover:bg-slate-50/50 transition-colors">
+                          <tr key={lesson.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                             <td className="px-6 py-4">
                               <button 
                                 onClick={() => setActiveLessonId(lesson.id)}
-                                className="text-[15px] font-semibold text-slate-800 hover:text-blue-600 transition-colors text-left"
+                                className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-left"
                               >
                                 {lesson.title}
                               </button>
@@ -1017,12 +1262,13 @@ ${activeLesson.content}`;
                       <p className="text-sm font-medium text-slate-500">{lang === 'kh' ? 'តំណភ្ជាប់ទៅកាន់ឯកសារនេះ៖' : 'Link to this document:'}</p>
                       <div className="flex gap-2">
                          <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600 font-medium truncate">
-                           {window.location.origin}/lesson/{activeLessonId}?access={shareAccess}&role={shareRole}
+                           {shareLink || (lang === 'kh' ? 'កំពុងបង្កើតតំណ...' : 'Generating link...')}
                          </div>
                          <button 
                           onClick={async () => {
+                            if (!shareLink) return;
                             try {
-                              await navigator.clipboard.writeText(`${window.location.origin}/lesson/${activeLessonId}?access=${shareAccess}&role=${shareRole}`);
+                              await navigator.clipboard.writeText(shareLink);
                               setLinkCopied(true);
                               window.setTimeout(() => setLinkCopied(false), 2000);
                             } catch (error) {
@@ -1030,7 +1276,8 @@ ${activeLesson.content}`;
                               setLinkCopied(false);
                             }
                            }}
-                           className="flex items-center gap-2 bg-blue-600 text-white px-6 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all active:scale-95"
+                           className="flex items-center gap-2 bg-blue-600 text-white px-6 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
+                           disabled={!shareLink}
                          >
                             {linkCopied ? <Check size={18} /> : <Copy size={18} />}
                             {linkCopied ? t.linkCopied : t.copyLink}
@@ -1120,7 +1367,7 @@ ${activeLesson.content}`;
                             )}>
                               <div className="flex items-center gap-4">
                                 <div className={cn("w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm", isCurrent ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-400")}>
-                                  G
+                                  {ownerLabel.charAt(0).toUpperCase()}
                                 </div>
                                 <div>
                                   <p className="text-sm font-bold text-slate-800">{new Date(v.createdAt).toLocaleString()}</p>
@@ -1145,8 +1392,10 @@ ${activeLesson.content}`;
                         })
                       )}
                    </div>
-                   <div className="mt-8 p-4 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 text-xs text-center font-medium">
-                      {lang === 'kh' ? 'Autosave នីមួយៗត្រូវបានរក្សាទុកជា snapshot ក្នុង PostgreSQL' : 'Each autosave is stored as a snapshot in PostgreSQL'}
+                   <div className="mt-8 p-4 rounded-2xl bg-amber-50 border border-amber-100 text-amber-800 text-xs text-center font-medium leading-relaxed">
+                      {lang === 'kh'
+                        ? 'មិនចាំបាច់ចូលគណនី — មេរៀន និងប្រវត្តិកំណែត្រូវបានរក្សាទុកក្នុង Database សម្រាប់ browser នេះ។'
+                        : 'No login required — your lessons and version history are saved in the database for this browser.'}
                    </div>
                 </div>
               </motion.div>
@@ -1176,44 +1425,30 @@ ${activeLesson.content}`;
                     </div>
                   </div>
 
-                  {/* Paper preview */}
-                  <div className="flex-1 flex items-start justify-center">
+                  {/* Paper preview — full scrollable document matching PDF layout */}
+                  <div className="flex-1 flex items-start justify-center min-h-0">
                     <div
-                      className="relative w-full transition-all duration-500"
+                      className="relative w-full transition-all duration-300"
                       style={{
-                        maxWidth: `${exportSettings.orientation === 'portrait'
-                          ? getPageDimensions(exportSettings.pageSize).width
-                          : getPageDimensions(exportSettings.pageSize).height}px`,
+                        maxWidth: `${exportPrintWidth}px`,
                       }}
                     >
-                      {/* Paper shadow layers */}
-                      <div className="absolute -bottom-2 left-3 right-3 h-full bg-slate-200/60 rounded-xl" />
-                      <div className="absolute -bottom-1 left-1.5 right-1.5 h-full bg-slate-100 rounded-xl" />
-                      {/* Main paper */}
+                      <div className="absolute -bottom-2 left-3 right-3 top-3 bg-slate-200/50 rounded-xl pointer-events-none" />
                       <div
-                        className="relative bg-white rounded-lg overflow-hidden shadow-xl ring-1 ring-slate-200"
-                        style={{
-                          aspectRatio: (() => {
-                            const dims = getPageDimensions(exportSettings.pageSize);
-                            return exportSettings.orientation === 'portrait'
-                              ? `${dims.width}/${dims.height}`
-                              : `${dims.height}/${dims.width}`;
-                          })(),
-                        }}
+                        ref={pdfPreviewContainerRef}
+                        id="pdf-preview-container"
+                        className="relative overflow-y-auto custom-scrollbar max-h-[calc(88vh-8rem)] rounded-lg shadow-xl ring-1 ring-slate-200 bg-white"
                       >
-                        <div
-                          ref={pdfPreviewContainerRef}
-                          className="h-full min-h-0 overflow-y-auto custom-scrollbar"
-                          id="pdf-preview-container"
-                        >
-                          <DocViewer
-                            content={activeLesson?.content || ''}
-                            fontSize={fontSize}
-                            previewMode
-                            exportPreview
-                          />
-                        </div>
-                        </div>
+                        <PdfExportPreview
+                          content={activeLesson?.content || ''}
+                          fontSize={fontSize}
+                          lang={lang}
+                          lessonTitle={activeLesson?.title || ''}
+                          styleVars={exportPdfStyleVars}
+                          pageBreakOffsets={pdfPageSlices.slice(1).map((slice) => slice.offsetY)}
+                          continuationTopPad={getContinuationPageTopPad(exportPdfStyleVars)}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1364,11 +1599,15 @@ ${activeLesson.content}`;
                   <div className="p-5 bg-gradient-to-b from-slate-50 to-white border-t border-slate-100">
                     <button
                       onClick={() => handleDownloadPDF(exportSettings)}
-                      disabled={isExporting}
-                      className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center justify-center gap-2.5 shadow-lg shadow-blue-200/70 disabled:opacity-50 active:scale-[0.98]"
+                      disabled={isExporting || !pdfExportReady}
+                      className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center justify-center gap-2.5 shadow-lg shadow-blue-200/70 dark:shadow-blue-950/50 disabled:opacity-50 active:scale-[0.98]"
                     >
-                      {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-                      {t.download}
+                      {isExporting ? <Loader2 size={18} className="animate-spin" /> : !pdfExportReady ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                      {isExporting
+                        ? t.download
+                        : !pdfExportReady
+                          ? (lang === 'kh' ? 'កំពុងរៀបចំ…' : 'Preparing…')
+                          : t.download}
                     </button>
                     <p className="text-center text-[10px] text-slate-400 mt-2.5 font-medium">
                       {lang === 'kh' ? 'ទាញយកជា PDF · ខ្ពស់គុណភាព' : 'Export as high-quality PDF'}
@@ -1379,6 +1618,33 @@ ${activeLesson.content}`;
             </div>
           )}
         </AnimatePresence>
+
+        <GlobalSearchModal
+          open={showSearchModal}
+          onClose={() => setShowSearchModal(false)}
+          lessons={lessons}
+          lang={lang}
+          onSelect={handleSearchSelect}
+        />
+
+        <TemplatePickerModal
+          open={showTemplateModal}
+          onClose={() => {
+            setShowTemplateModal(false);
+            setTemplateFolderId(null);
+          }}
+          lang={lang}
+          onPick={createLessonFromTemplate}
+        />
+
+        {showPresentation && activeLesson ? (
+          <PresentationMode
+            content={activeLesson.content}
+            title={localizeSeedLabel(activeLesson.title)}
+            lang={lang}
+            onClose={() => setShowPresentation(false)}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -1,5 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { isHtmlContent, markdownToEditorHtml } from '../lib/lessonContent';
+import { isHtmlContent, markdownToEditorHtml, normalizeImportedMarkdown, getLessonOutlineHeadings, assignHeadingIdsInDom, findDomHeadingForOutlineId } from '../lib/lessonContent';
+import {
+  buildEditorCodeBlockHtml,
+  detectCodeLanguage,
+  extractMarkdownFromMisplacedCodeBlock,
+  looksLikeCodeBlock,
+  looksLikeMarkdownDocument,
+} from '../lib/codeFormat';
+import { SQL_LESSON_KH } from '../lib/markdownTemplates';
+import { highlightElement, scrollElementIntoMainView } from '../lib/scrollTo';
 import { 
   Save, 
   X, 
@@ -64,8 +73,11 @@ import { GoogleGenAI } from "@google/genai";
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 import { Language } from '../i18n';
+import { ToolbarButton, ToolbarDivider, ToolbarDropdown, ToolbarDropdownItem } from './EditorToolbar';
 
 interface EditorProps {
+  lessonId: string;
+  contentReloadKey?: number;
   initialTitle: string;
   initialContent: string;
   onSave: (title: string, content: string, isAuto?: boolean) => void;
@@ -76,10 +88,13 @@ interface EditorProps {
   onShowShare?: () => void;
   onShowHistory?: () => void;
   navigateToText?: string;
+  navigateToHeadingId?: string;
   navigateToSeq?: number;
 }
 
 export function Editor({ 
+  lessonId,
+  contentReloadKey = 0,
   initialTitle, 
   initialContent, 
   onSave, 
@@ -90,6 +105,7 @@ export function Editor({
   onShowShare,
   onShowHistory,
   navigateToText,
+  navigateToHeadingId,
   navigateToSeq = 0
 }: EditorProps) {
   const isKh = lang === 'kh';
@@ -296,7 +312,7 @@ export function Editor({
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [activeTopMenu, setActiveTopMenu] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
-  const [fontFamily, setFontFamily] = useState('Arial');
+  const [fontFamily, setFontFamily] = useState('Kantumruy Pro');
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTextStyle, setActiveTextStyle] = useState('Normal text');
@@ -350,8 +366,40 @@ export function Editor({
   const normalizeEditorContent = (value: string) => {
     const raw = (value || '').trim();
     if (!raw) return '';
-    if (isHtmlContent(raw)) return value;
-    return markdownToEditorHtml(raw);
+
+    const recovered = extractMarkdownFromMisplacedCodeBlock(raw);
+    const asMarkdown = looksLikeMarkdownDocument(recovered) || recovered.includes('```');
+
+    if (isHtmlContent(recovered)) {
+      if (/data-code-block-wrap/i.test(recovered) || /<pre[\s>]/i.test(recovered)) {
+        if (!asMarkdown) return recovered;
+      } else {
+        const plain = recovered
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .trim();
+        if (looksLikeMarkdownDocument(plain) || plain.includes('```')) {
+          return markdownToEditorHtml(normalizeImportedMarkdown(plain));
+        }
+        if (looksLikeCodeBlock(plain)) {
+          return `${buildEditorCodeBlockHtml(plain, detectCodeLanguage(plain))}<p><br></p>`;
+        }
+        return recovered;
+      }
+    }
+
+    const md = normalizeImportedMarkdown(recovered);
+    if (md.includes('```') || looksLikeMarkdownDocument(md)) {
+      return markdownToEditorHtml(md);
+    }
+    if (looksLikeCodeBlock(md)) {
+      return `${buildEditorCodeBlockHtml(md, detectCodeLanguage(md))}<p><br></p>`;
+    }
+    return markdownToEditorHtml(md);
   };
   const decorateCodeBlocks = (editor: HTMLDivElement) => {
     editor.querySelectorAll('pre').forEach((pre) => {
@@ -404,18 +452,47 @@ export function Editor({
     '#fad2cf', '#f6aea9', '#fdd663', '#ffe69c', '#fff3c4', '#c4e7cb', '#aecbfa', '#cfe2ff', '#e6d8f6',
   ];
 
+  const contentLoadRef = useRef({ lessonId: '', reloadKey: -1 });
+
   useEffect(() => {
+    if (
+      contentLoadRef.current.lessonId === lessonId &&
+      contentLoadRef.current.reloadKey === contentReloadKey
+    ) {
+      return;
+    }
+    contentLoadRef.current = { lessonId, reloadKey: contentReloadKey };
     setTitle(initialTitle);
     setContent(initialContent);
     setHistory([initialContent]);
     setHistoryIndex(0);
     historyRef.current = [initialContent];
     historyIndexRef.current = 0;
-  }, [initialTitle, initialContent]);
+    if (editorRef.current) {
+      const normalized = normalizeEditorContent(initialContent || '');
+      editorRef.current.innerHTML = normalized;
+      decorateCodeBlocks(editorRef.current);
+    }
+  }, [lessonId, contentReloadKey, initialTitle, initialContent]);
 
   useEffect(() => {
     setSelectedFontSize(fontSize);
   }, [fontSize]);
+
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -432,15 +509,6 @@ export function Editor({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    if (!editorRef.current) return;
-    const normalized = normalizeEditorContent(initialContent || '');
-    if (editorRef.current.innerHTML !== normalized) {
-      editorRef.current.innerHTML = normalized;
-      decorateCodeBlocks(editorRef.current);
-    }
-  }, [initialContent]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -1033,11 +1101,66 @@ export function Editor({
         '- Observation checklist',
         '- Exit ticket',
       ].join('\n'),
+      'SQL lesson (Khmer)': SQL_LESSON_KH,
+      'SQL section': [
+        '## Topic title',
+        '',
+        'Short explanation...',
+        '',
+        '```sql',
+        'SELECT * FROM table_name;',
+        '```',
+      ].join('\n'),
     };
     const value = templates[template];
     if (!value) return;
     insertMarkdown(`\n${value}\n`, '');
     setActiveDropdown(null);
+  };
+
+  const isInsideCodeBlock = (node: Node | null, editor: HTMLElement) => {
+    if (!node) return false;
+    const el = node.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node.parentElement;
+    return !!el?.closest('[data-code-block-wrap], pre[data-code-block], pre code');
+  };
+
+  const insertCodeFromText = (text: string, lang?: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    restoreSelection();
+    const language = lang || detectCodeLanguage(text);
+    const blockHtml = buildEditorCodeBlockHtml(text.trim(), language);
+    document.execCommand('insertHTML', false, `${blockHtml}<p><br></p>`);
+    decorateCodeBlocks(editor);
+    updateContent(editor.innerHTML);
+    saveCurrentSelection();
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const selection = window.getSelection();
+    if (isInsideCodeBlock(selection?.anchorNode ?? null, editor)) return;
+
+    const text = e.clipboardData.getData('text/plain').trim();
+    const html = e.clipboardData.getData('text/html');
+
+    if (html && /<pre[\s>]/i.test(html)) {
+      e.preventDefault();
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const pre = tmp.querySelector('pre');
+      const codeText = (pre?.textContent || text).trim();
+      if (codeText) insertCodeFromText(codeText);
+      return;
+    }
+
+    if (text && looksLikeCodeBlock(text)) {
+      e.preventDefault();
+      insertCodeFromText(text);
+    }
   };
 
   const insertStyledCodeBlock = (languageKey = 'ts') => {
@@ -1046,13 +1169,8 @@ export function Editor({
     editor.focus();
     restoreSelection();
     const pickedLanguage = codeLanguageOptions.find((item) => item.key === languageKey) || codeLanguageOptions[0];
-    const starterCode = pickedLanguage.starter;
-    const escapedCode = starterCode
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    const blockHtml = `<div data-code-block-wrap="true" data-code-language="${pickedLanguage.key}" style="${CODE_BLOCK_WRAP_STYLE}"><div contenteditable="false" style="${CODE_BLOCK_LABEL_STYLE}">${pickedLanguage.label}</div><pre data-code-block="true" style="${CODE_BLOCK_PRE_STYLE}"><code style="${CODE_BLOCK_CODE_STYLE}">${escapedCode}</code></pre></div><p><br></p>`;
-    document.execCommand('insertHTML', false, blockHtml);
+    const blockHtml = buildEditorCodeBlockHtml(pickedLanguage.starter, pickedLanguage.key);
+    document.execCommand('insertHTML', false, `${blockHtml}<p><br></p>`);
     decorateCodeBlocks(editor);
     updateContent(editor.innerHTML);
     saveCurrentSelection();
@@ -1243,164 +1361,11 @@ export function Editor({
     }
   };
 
-  const ToolbarButton = ({ icon: Icon, title, onClick, active, className, children, buttonRef }: any) => (
-    <button
-      ref={buttonRef}
-      type="button"
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      title={title}
-      className={cn(
-        "p-1 rounded hover:bg-slate-200/60 text-slate-600 transition-colors flex items-center justify-center min-w-[24px] h-6 cursor-pointer",
-        active && "bg-blue-100/80 text-blue-700",
-        className
-      )}
-    >
-      {Icon && <Icon size={16} />}
-      {children}
-    </button>
-  );
-
-  const ToolbarDropdown = ({ label, items, id, type = 'text', triggerIcon: TriggerIcon }: any) => {
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const closeTimerRef = useRef<number | null>(null);
-    const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
-    const isOpen = activeDropdown === id;
-
-    const clearCloseTimer = () => {
-      if (closeTimerRef.current !== null) {
-        window.clearTimeout(closeTimerRef.current);
-        closeTimerRef.current = null;
-      }
-    };
-
-    const openDropdown = () => {
-      clearCloseTimer();
-      setActiveDropdown(id);
-    };
-
-    const closeDropdownSoon = () => {
-      clearCloseTimer();
-      closeTimerRef.current = window.setTimeout(() => {
-        setActiveDropdown((current) => (current === id ? null : current));
-        closeTimerRef.current = null;
-      }, 120);
-    };
-
-    useEffect(() => {
-      if (!isOpen || !triggerRef.current) return;
-      const updatePosition = () => {
-        const rect = triggerRef.current!.getBoundingClientRect();
-        const menuWidth = type === 'font' ? 260 : type === 'styles' ? 240 : type === 'size' ? 76 : 188;
-        const viewportPadding = 8;
-        const nextLeft = Math.min(
-          Math.max(viewportPadding, rect.left),
-          window.innerWidth - menuWidth - viewportPadding
-        );
-        setMenuPos({
-          top: rect.bottom + 4,
-          left: nextLeft,
-          width: menuWidth,
-        });
-      };
-
-      updatePosition();
-      window.addEventListener('resize', updatePosition);
-      window.addEventListener('scroll', updatePosition, true);
-      return () => {
-        window.removeEventListener('resize', updatePosition);
-        window.removeEventListener('scroll', updatePosition, true);
-      };
-    }, [isOpen, type]);
-
-    useEffect(() => () => clearCloseTimer(), []);
-
-    return (
-      <div className="inline-block">
-        <button
-          ref={triggerRef}
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onMouseEnter={openDropdown}
-          onMouseLeave={closeDropdownSoon}
-          onClick={() => setActiveDropdown(isOpen ? null : id)}
-          className={cn(
-            "flex items-center gap-0.5 px-1 text-xs font-medium text-slate-700 hover:bg-slate-200/60 h-6 rounded cursor-pointer transition-colors",
-            isOpen && "bg-blue-100/80 text-blue-700",
-            type === 'font' ? "min-w-[58px]" : type === 'styles' ? "min-w-[86px]" : type === 'zoom' ? "min-w-[52px]" : type === 'size' ? "min-w-[42px]" : type === 'list' ? "min-w-[30px]" : "min-w-[52px]"
-          )}
-        >
-          {TriggerIcon ? (
-            <TriggerIcon size={14} />
-          ) : (
-            <span className={cn("truncate", type === 'font' ? "max-w-[38px]" : type === 'styles' ? "max-w-[68px]" : "max-w-[34px]")}>{label}</span>
-          )}
-          <ChevronDown size={12} className={cn("transition-transform duration-200", isOpen && "rotate-180")} />
-        </button>
-
-        {createPortal(
-          <AnimatePresence>
-            {isOpen && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                onMouseEnter={openDropdown}
-                onMouseLeave={closeDropdownSoon}
-                data-editor-portal="dropdown"
-                style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
-                className="fixed bg-[#f8f9fa] rounded-lg shadow-xl border border-slate-300 z-[260] overflow-hidden py-1 max-h-[70vh] overflow-y-auto"
-              >
-                {items.map((item: any, index: number) => {
-                  if (item.type === 'divider') {
-                    return <div key={`${id}-divider-${index}`} className="my-1 border-t border-slate-300/80" />;
-                  }
-                  if (item.type === 'header') {
-                    return (
-                      <div key={`${id}-header-${item.label}-${index}`} className="px-4 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                        {localize(item.label)}
-                      </div>
-                    );
-                  }
-                  return (
-                    <button
-                      type="button"
-                      key={item.label}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        item.onClick();
-                        if (!item.keepOpen) setActiveDropdown(null);
-                      }}
-                      className={cn(
-                        "w-full text-left px-4 py-1.5 text-sm hover:bg-slate-200/70 transition-colors flex items-center justify-between",
-                        item.active ? "text-slate-800 font-semibold bg-slate-200/90" : "text-slate-700"
-                      )}
-                      style={item.style}
-                    >
-                      <div className="flex items-center gap-2">
-                        {item.icon ? <item.icon size={14} /> : null}
-                        {!item.iconOnly && <span>{localize(item.label)}</span>}
-                      </div>
-                      {item.active && <Check size={14} className="text-slate-700" />}
-                    </button>
-                  );
-                })}
-              </motion.div>
-            )}
-          </AnimatePresence>,
-          document.body
-        )}
-      </div>
-    );
-  };
-
-  const Divider = () => <div className="w-px h-3 bg-slate-200 mx-0.5 self-center" />;
-
   const changePaperZoom = (delta: number) => {
     setZoom((prev) => Math.max(50, Math.min(200, prev + delta)));
   };
 
-  const zoomItems = [
+  const zoomItems: ToolbarDropdownItem[] = [
     { label: 'Fit', onClick: () => setZoom(100), active: zoom === 100 },
     { type: 'divider' },
     { label: '50%', onClick: () => setZoom(50), active: zoom === 50 },
@@ -1412,7 +1377,7 @@ export function Editor({
     { label: '200%', onClick: () => setZoom(200), active: zoom === 200 },
   ];
 
-  const paperSizeItems = paperSizeOptions.map((opt) => ({
+  const paperSizeItems: ToolbarDropdownItem[] = paperSizeOptions.map((opt) => ({
     label: opt.label,
     onClick: () => {
       setPaperSizeKey(opt.key);
@@ -1423,7 +1388,7 @@ export function Editor({
     active: paperSizeKey === opt.key,
   }));
 
-  const styleItems = [
+  const styleItems: ToolbarDropdownItem[] = [
     { label: 'Normal text', onClick: () => setTextStyle('Normal text'), active: activeTextStyle === 'Normal text' },
     { type: 'divider' },
     { label: 'Title', onClick: () => setTextStyle('Title'), active: activeTextStyle === 'Title', style: { fontSize: '22px', fontWeight: 700 } },
@@ -1437,7 +1402,7 @@ export function Editor({
     { label: 'Options', onClick: () => setShowShortcuts(true) },
   ];
 
-  const fontItems = [
+  const fontItems: ToolbarDropdownItem[] = [
     { label: 'More fonts', onClick: () => setShowShortcuts(true), keepOpen: true },
     { type: 'divider' },
     { type: 'header', label: 'Recent' },
@@ -1459,7 +1424,7 @@ export function Editor({
     { label: 'Lobster', onClick: () => applyFontFamily('Lobster'), active: fontFamily === 'Lobster', style: { fontFamily: 'Lobster' } },
   ];
 
-  const fontSizeItems = [8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96].map((size) => ({
+  const fontSizeItems: ToolbarDropdownItem[] = [8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96].map((size) => ({
     label: String(size),
     onClick: () => applySelectedFontSize(size),
     active: selectedFontSize === size,
@@ -1473,7 +1438,7 @@ export function Editor({
         ? AlignRight
         : AlignJustify;
 
-  const listItems = [
+  const listItems: ToolbarDropdownItem[] = [
     { label: 'Bulleted list', icon: List, iconOnly: true, onClick: () => applyListStyle('Bulleted list'), active: activeListType === 'Bulleted list' },
     { label: 'Circle bullets', icon: Circle, iconOnly: true, onClick: () => applyListStyle('Circle bullets'), active: activeListType === 'Circle bullets' },
     { label: 'Square bullets', icon: Square, iconOnly: true, onClick: () => applyListStyle('Square bullets'), active: activeListType === 'Square bullets' },
@@ -1484,7 +1449,7 @@ export function Editor({
     { label: 'Checklist menu', icon: ListTodo, iconOnly: true, onClick: () => applyListStyle('Checklist menu'), active: activeListType === 'Checklist menu' },
   ];
 
-  const templateItems = [
+  const templateItems: ToolbarDropdownItem[] = [
     { label: 'API endpoint doc', onClick: () => insertTemplate('API endpoint doc') },
     { label: 'Markdown table', onClick: () => insertTemplate('Markdown table') },
     { label: 'Code block (TypeScript)', onClick: () => insertTemplate('Code block (TypeScript)') },
@@ -1495,9 +1460,12 @@ export function Editor({
     { label: 'Learning activity', onClick: () => insertTemplate('Learning activity') },
     { label: 'Assessment', onClick: () => insertTemplate('Assessment') },
     { label: 'Full lesson plan', onClick: () => insertTemplate('Full lesson plan') },
+    { type: 'divider' },
+    { label: 'SQL section', onClick: () => insertTemplate('SQL section') },
+    { label: 'SQL lesson (Khmer)', onClick: () => insertTemplate('SQL lesson (Khmer)') },
   ];
 
-  const tableItems = [
+  const tableItems: ToolbarDropdownItem[] = [
     { label: '2 x 2 table', onClick: () => insertMarkdownTable(2, 2) },
     { label: '3 x 3 table', onClick: () => insertMarkdownTable(3, 3) },
     { label: '4 x 4 table', onClick: () => insertMarkdownTable(4, 4) },
@@ -1509,12 +1477,12 @@ export function Editor({
     { type: 'divider' },
     { label: 'Quick lesson plan table', onClick: () => insertTemplate('Markdown table') },
   ];
-  const codeLanguageItems = codeLanguageOptions.map((lang) => ({
+  const codeLanguageItems: ToolbarDropdownItem[] = codeLanguageOptions.map((lang) => ({
     label: lang.label,
     onClick: () => insertStyledCodeBlock(lang.key),
   }));
 
-  const copyItems = [
+  const copyItems: ToolbarDropdownItem[] = [
     { label: 'Copy as Markdown', onClick: () => copyContentAs('markdown') },
     { label: 'Copy as Plain text', onClick: () => copyContentAs('plain') },
     { label: 'Copy as HTML', onClick: () => copyContentAs('html') },
@@ -1560,6 +1528,10 @@ export function Editor({
   const pasteWithoutFormatting = async () => {
     try {
       const text = await navigator.clipboard.readText();
+      if (looksLikeCodeBlock(text)) {
+        insertCodeFromText(text);
+        return;
+      }
       runCommand('insertText', text);
     } catch (error) {
       console.error('Paste without formatting failed:', error);
@@ -1578,6 +1550,10 @@ export function Editor({
     if (action === 'paste') {
       try {
         const text = await navigator.clipboard.readText();
+        if (looksLikeCodeBlock(text.trim())) {
+          insertCodeFromText(text);
+          return;
+        }
         runCommand('insertText', text);
         return;
       } catch (error) {
@@ -1691,63 +1667,100 @@ export function Editor({
       .filter((token) => token.length > 0);
 
   useEffect(() => {
-    const target = navigateToText?.trim();
     const editor = editorRef.current;
-    if (!target || !editor) return;
-    const needle = normalizeForMatch(target);
-    const needleTokens = tokenizeForMatch(target);
-    if (!needle || needleTokens.length === 0) return;
-    const minTokenMatches = Math.max(1, Math.ceil(needleTokens.length * 0.6));
+    if (!editor) return;
+    if (!navigateToHeadingId && !navigateToText?.trim()) return;
 
-    const candidates = Array.from(
-      editor.querySelectorAll('h1, h2, h3, h4, p, li, blockquote, pre, code, td, th')
-    ) as HTMLElement[];
-    const scored = candidates
-      .map((el) => {
-        const text = normalizeForMatch(el.innerText || el.textContent || '');
-        if (!text) return null;
-        const textTokens = tokenizeForMatch(text);
-        let score = 0;
+    const assignHeadingIds = () => {
+      const headings = getLessonOutlineHeadings(content);
+      assignHeadingIdsInDom(editor, headings);
+    };
 
-        if (text.includes(needle)) score += 1000;
+    let highlightCleanup: (() => void) | null = null;
 
-        const matchedTokenCount = needleTokens.filter((token) =>
-          textTokens.some((candidateToken) => candidateToken.includes(token) || token.includes(candidateToken))
-        ).length;
-        if (!text.includes(needle) && matchedTokenCount < minTokenMatches) return null;
-        score += matchedTokenCount * 20;
+    const runNavigation = () => {
+      assignHeadingIds();
 
-        // Prefer tighter matches to avoid jumping to very large containers.
-        score -= Math.max(0, text.length - needle.length) * 0.02;
+      if (navigateToHeadingId) {
+        const headings = getLessonOutlineHeadings(content);
+        const byId = findDomHeadingForOutlineId(editor, headings, navigateToHeadingId);
+        if (byId) {
+          scrollElementIntoMainView(byId, { behavior: 'smooth', block: 'start' });
+          highlightCleanup?.();
+          highlightCleanup = highlightElement(byId);
+          return true;
+        }
+      }
 
-        return { el, score, textLength: text.length };
-      })
-      .filter((entry): entry is { el: HTMLElement; score: number; textLength: number } => !!entry && entry.score > 0)
-      .sort((a, b) => (b.score === a.score ? a.textLength - b.textLength : b.score - a.score));
+      const target = navigateToText?.trim();
+      if (!target) return false;
+      const needle = normalizeForMatch(target);
+      const needleTokens = tokenizeForMatch(target);
+      if (!needle || needleTokens.length === 0) return false;
+      const minTokenMatches = Math.max(1, Math.ceil(needleTokens.length * 0.6));
 
-    const bestMatch = scored[0]?.el || null;
+      const candidates = Array.from(
+        editor.querySelectorAll('h1, h2, h3, h4, p, li, blockquote, pre, code, td, th')
+      ) as HTMLElement[];
+      const scored = candidates
+        .map((el) => {
+          const text = normalizeForMatch(el.innerText || el.textContent || '');
+          if (!text) return null;
+          const textTokens = tokenizeForMatch(text);
+          let score = 0;
 
-    if (!bestMatch) return;
+          if (text.includes(needle)) score += 1000;
 
-    bestMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const oldBg = bestMatch.style.backgroundColor;
-    bestMatch.style.backgroundColor = 'rgba(59, 130, 246, 0.12)';
-    if (navigationHighlightTimerRef.current !== null) {
-      window.clearTimeout(navigationHighlightTimerRef.current);
+          const matchedTokenCount = needleTokens.filter((token) =>
+            textTokens.some((candidateToken) => candidateToken.includes(token) || token.includes(candidateToken))
+          ).length;
+          if (!text.includes(needle) && matchedTokenCount < minTokenMatches) return null;
+          score += matchedTokenCount * 20;
+
+          score -= Math.max(0, text.length - needle.length) * 0.02;
+
+          return { el, score, textLength: text.length };
+        })
+        .filter((entry): entry is { el: HTMLElement; score: number; textLength: number } => !!entry && entry.score > 0)
+        .sort((a, b) => (b.score === a.score ? a.textLength - b.textLength : b.score - a.score));
+
+      const bestMatch = scored[0]?.el || null;
+      if (!bestMatch) return false;
+
+      scrollElementIntoMainView(bestMatch, { behavior: 'smooth', block: 'start' });
+      highlightCleanup?.();
+      highlightCleanup = highlightElement(bestMatch);
+
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(bestMatch);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        savedRangeRef.current = range.cloneRange();
+      }
+      return true;
+    };
+
+    if (runNavigation()) {
+      return () => highlightCleanup?.();
     }
-    navigationHighlightTimerRef.current = window.setTimeout(() => {
-      bestMatch.style.backgroundColor = oldBg;
-    }, 800);
 
-    const selection = window.getSelection();
-    if (!selection) return;
-    const range = document.createRange();
-    range.selectNodeContents(bestMatch);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    savedRangeRef.current = range.cloneRange();
-  }, [navigateToText, navigateToSeq, content]);
+    const retry1 = window.setTimeout(runNavigation, 80);
+    const retry2 = window.setTimeout(runNavigation, 250);
+    return () => {
+      window.clearTimeout(retry1);
+      window.clearTimeout(retry2);
+      highlightCleanup?.();
+    };
+  }, [navigateToText, navigateToHeadingId, navigateToSeq, content]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    assignHeadingIdsInDom(editor, getLessonOutlineHeadings(content));
+  }, [content]);
 
   useEffect(() => () => {
     if (navigationHighlightTimerRef.current !== null) {
@@ -1778,9 +1791,59 @@ export function Editor({
 
   const handleFilePicked = async (file: File) => {
     const text = await file.text();
-    const isHtml = file.name.toLowerCase().endsWith('.html') || file.name.toLowerCase().endsWith('.htm');
-    const html = isHtml ? text : convertPlainTextToHtml(text);
+    const lower = file.name.toLowerCase();
+    const isHtml = lower.endsWith('.html') || lower.endsWith('.htm');
+    const isMd = lower.endsWith('.md') || lower.endsWith('.markdown');
+
     setTitle(file.name.replace(/\.[^.]+$/, ''));
+
+    if (isMd) {
+      const markdown = normalizeImportedMarkdown(text);
+      setContent(markdown);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = markdownToEditorHtml(markdown);
+      }
+      return;
+    }
+
+    if (isHtml) {
+      const cleaned = normalizeImportedMarkdown(text);
+      const html = isHtmlContent(cleaned) ? cleaned : markdownToEditorHtml(cleaned);
+      updateContent(html);
+      if (editorRef.current) editorRef.current.innerHTML = html;
+      return;
+    }
+
+    const codeExtensions: Record<string, string> = {
+      '.js': 'javascript',
+      '.mjs': 'javascript',
+      '.cjs': 'javascript',
+      '.jsx': 'javascript',
+      '.ts': 'typescript',
+      '.tsx': 'typescript',
+      '.sql': 'sql',
+      '.json': 'json',
+      '.py': 'python',
+      '.java': 'java',
+      '.css': 'css',
+      '.sh': 'bash',
+      '.bash': 'bash',
+    };
+    const ext = lower.includes('.') ? lower.slice(lower.lastIndexOf('.')) : '';
+    const fileLang = codeExtensions[ext];
+
+    if (fileLang || looksLikeCodeBlock(text)) {
+      const lang = fileLang || detectCodeLanguage(text);
+      const html = `${buildEditorCodeBlockHtml(text, lang)}<p><br></p>`;
+      updateContent(html);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = html;
+        decorateCodeBlocks(editorRef.current);
+      }
+      return;
+    }
+
+    const html = convertPlainTextToHtml(text);
     updateContent(html);
     if (editorRef.current) editorRef.current.innerHTML = html;
   };
@@ -1911,7 +1974,7 @@ export function Editor({
   };
 
   return (
-    <div className="flex h-full flex-col bg-[#f9fbfd]">
+    <div className="editor-root flex h-full min-h-0 min-w-0 flex-col bg-[#f9fbfd] dark:bg-slate-950">
       <input
         ref={openFileInputRef}
         type="file"
@@ -1924,7 +1987,7 @@ export function Editor({
         }}
       />
       {/* Top Banner: File Title & Menu Bar */}
-      <div className="flex flex-col bg-white border-b border-slate-200 px-4 pt-4 pb-2 z-30 shadow-sm transition-all duration-300 relative">
+      <div className="editor-header relative z-30 flex shrink-0 flex-col border-b border-slate-200 bg-white px-4 pb-2 pt-4 shadow-sm transition-all duration-300 dark:border-slate-700 dark:bg-slate-900 dark:shadow-slate-950/40">
         <div className="flex items-center gap-3">
           <div className="p-1 rounded bg-[#4285f4]">
             <FileCode size={32} className="text-white" />
@@ -1936,7 +1999,7 @@ export function Editor({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={t.untitledLesson}
-                className="bg-transparent text-[18px] text-slate-800 placeholder:text-slate-300 focus:outline-none px-1 hover:ring-1 hover:ring-slate-200 rounded min-w-[240px] md:min-w-[320px]"
+                className="editor-title-input bg-transparent text-[18px] text-slate-800 dark:text-slate-100 placeholder:text-slate-300 dark:placeholder:text-slate-500 focus:outline-none px-1 hover:ring-1 hover:ring-slate-200 dark:hover:ring-slate-600 rounded min-w-[240px] md:min-w-[320px]"
               />
             </div>
             <div ref={topMenuRef} className="flex items-center gap-1 -ml-1 relative">
@@ -1945,8 +2008,10 @@ export function Editor({
                   <button
                     onClick={() => setActiveTopMenu(activeTopMenu === menu ? null : menu)}
                     className={cn(
-                      "px-2 py-0.5 text-sm rounded transition-colors leading-tight cursor-pointer",
-                      activeTopMenu === menu ? "bg-slate-200 text-slate-900" : "text-slate-600 hover:bg-slate-100"
+                      "editor-menu-btn px-2 py-0.5 text-sm rounded transition-colors leading-tight cursor-pointer",
+                      activeTopMenu === menu
+                        ? "editor-menu-btn-active bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                     )}
                   >
                     {localize(menu)}
@@ -1957,14 +2022,14 @@ export function Editor({
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
-                        className="absolute left-0 top-full mt-1 w-72 rounded-xl border border-slate-200 bg-white shadow-xl z-[200] py-1 max-h-[70vh] overflow-y-auto"
+                        className="editor-menu-dropdown absolute left-0 top-full mt-1 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl z-[200] py-1 max-h-[70vh] overflow-y-auto"
                       >
                         {topMenus[menu].map((item) => (
                           <button
                             key={`${menu}-${item}`}
                             type="button"
                             onClick={() => handleTopMenuAction(menu, item)}
-                            className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                            className="editor-menu-item w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
                           >
                             {localize(item)}
                           </button>
@@ -1982,14 +2047,16 @@ export function Editor({
               onClick={() => setShowPreview(!showPreview)} 
               className={cn(
                 "hidden md:flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-bold transition-all border",
-                !showPreview ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-white text-blue-600 border-blue-200 hover:border-blue-400"
+                !showPreview
+                  ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                  : "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:border-blue-400 dark:hover:border-blue-600"
               )}
             >
               {!showPreview ? <Eye size={16} /> : <Edit2 size={16} />}
               {!showPreview ? t.preview : t.edit}
             </button>
             <button 
-              className="text-slate-600 hover:bg-slate-100 p-2 rounded-full transition-colors cursor-pointer" 
+              className="text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-full transition-colors cursor-pointer" 
               title={ui.history}
               onClick={onShowHistory}
             >
@@ -1997,14 +2064,14 @@ export function Editor({
             </button>
             <button 
               onClick={onShowShare}
-              className="flex items-center gap-1.5 bg-[#c2e7ff] text-[#001d35] px-4 py-1.5 rounded-full font-bold text-sm hover:shadow-md transition-all cursor-pointer"
+              className="flex items-center gap-1.5 bg-[#c2e7ff] dark:bg-blue-950 text-[#001d35] dark:text-blue-200 px-4 py-1.5 rounded-full font-bold text-sm hover:shadow-md dark:hover:bg-blue-900 transition-all cursor-pointer"
             >
               <Lock size={16} />
               {t.share}
             </button>
             <button
               onClick={() => onSave(title, content)}
-              className="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-1.5 rounded-full font-bold text-sm hover:bg-blue-700 hover:shadow-lg transition-all active:scale-95 shadow-blue-200"
+              className="flex items-center gap-1.5 bg-blue-600 text-white px-5 py-1.5 rounded-full font-bold text-sm hover:bg-blue-700 hover:shadow-lg transition-all active:scale-95 shadow-blue-200/80 dark:shadow-blue-950/50"
             >
               <Save size={18} />
               {t.save}
@@ -2016,7 +2083,9 @@ export function Editor({
       {/* Main Toolbar: Formatting Tools */}
       <div
         ref={toolbarRef}
-        className="flex items-center gap-0.5 px-1 h-9 bg-[#edf2fa] border-b border-slate-200 z-20 overflow-x-auto overflow-y-hidden no-scrollbar rounded-full mx-3 my-1.5 shadow-sm relative whitespace-nowrap touch-pan-x"
+        className="editor-toolbar-scroll sticky top-0 z-20 mx-3 my-1.5 min-w-0 shrink-0 bg-[#f9fbfd] dark:bg-slate-950"
+      >
+        <div className="editor-toolbar flex w-max flex-nowrap items-center gap-0.5 px-1 h-9 bg-[#edf2fa] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm dark:shadow-slate-950/30 whitespace-nowrap"
       >
         <div className="flex items-center">
           <ToolbarButton icon={Search} title={ui.search} onClick={() => setShowSearch(!showSearch)} active={showSearch} />
@@ -2039,7 +2108,7 @@ export function Editor({
                     }
                   }}
                   placeholder={ui.findPlaceholder}
-                  className="h-7 w-32 ml-1 px-2 rounded bg-white border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  className="editor-search-input h-7 w-32 ml-1 px-2 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:focus:ring-blue-500"
                   autoFocus
                 />
               </motion.div>
@@ -2051,30 +2120,30 @@ export function Editor({
         <ToolbarButton icon={Printer} title={ui.print} onClick={() => window.print()} />
         <ToolbarButton icon={SpellCheck} title={ui.spellCheck} active={spellCheckEnabled} onClick={() => setSpellCheckEnabled((s) => !s)} />
         <ToolbarButton icon={Baseline} title={ui.paintFormat} onClick={paintCurrentFormat} />
-        <ToolbarDropdown label={ui.paperSize} items={paperSizeItems} id="paperSize" type="list" triggerIcon={FileText} />
-        <ToolbarDropdown label={ui.copy} items={copyItems} id="copy" type="zoom" />
-        <ToolbarDropdown label={ui.quickInsert} items={templateItems} id="template" />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={ui.paperSize} items={paperSizeItems} id="paperSize" type="list" triggerIcon={FileText} />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={ui.copy} items={copyItems} id="copy" type="zoom" />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={ui.quickInsert} items={templateItems} id="template" />
         <ToolbarButton icon={ZoomOut} title={ui.zoomOut} onClick={() => changePaperZoom(-10)} />
-        <ToolbarDropdown label={`${zoom}%`} items={zoomItems} id="zoom" type="zoom" />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={`${zoom}%`} items={zoomItems} id="zoom" type="zoom" />
         <ToolbarButton icon={ZoomIn} title={ui.zoomIn} onClick={() => changePaperZoom(10)} />
 
-        <Divider />
+        <ToolbarDivider />
         
-        <ToolbarDropdown label={ui.styleShort} items={styleItems} id="styles" type="styles" />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={ui.styleShort} items={styleItems} id="styles" type="styles" />
         
-        <Divider />
+        <ToolbarDivider />
         
-        <ToolbarDropdown label={fontFamily} items={fontItems} id="font" type="font" />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={fontFamily} items={fontItems} id="font" type="font" />
         
-        <Divider />
+        <ToolbarDivider />
         
         <div className="flex items-center gap-0.5">
           <ToolbarButton icon={Minus} onClick={() => applySelectedFontSize(Math.max(1, selectedFontSize - 1))} />
-          <ToolbarDropdown label={`${selectedFontSize}`} items={fontSizeItems} id="fontSize" type="size" />
+          <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={`${selectedFontSize}`} items={fontSizeItems} id="fontSize" type="size" />
           <ToolbarButton icon={Plus} onClick={() => applySelectedFontSize(selectedFontSize + 1)} />
         </div>
         
-        <Divider />
+        <ToolbarDivider />
         
         <ToolbarButton icon={Bold} title={ui.bold} active={formatState.bold} onClick={() => runCommand('bold')} />
         <ToolbarButton icon={Italic} title={ui.italic} active={formatState.italic} onClick={() => runCommand('italic')} />
@@ -2085,7 +2154,7 @@ export function Editor({
             buttonRef={textColorButtonRef}
             icon={Type}
             title={ui.textColor}
-            className="text-slate-800"
+            className="text-slate-800 dark:text-slate-200"
             onClick={() => setActiveDropdown(activeDropdown === 'textColor' ? null : 'textColor')}
           />
           {createPortal(
@@ -2097,7 +2166,7 @@ export function Editor({
                   exit={{ opacity: 0, y: -4 }}
                   data-editor-portal="dropdown"
                   style={{ top: textColorPalettePos.top, left: textColorPalettePos.left }}
-                  className="fixed bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-[260] w-[230px]"
+                  className="editor-dropdown fixed bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl p-2 z-[260] w-[230px]"
                 >
                   <div className="grid grid-cols-9 gap-1.5">
                     {colorPalette.map((color) => (
@@ -2105,7 +2174,7 @@ export function Editor({
                         key={`text-${color}`}
                         type="button"
                         onClick={() => applyTextColor(color)}
-                        className="w-5 h-5 rounded-full border border-slate-200 flex items-center justify-center"
+                        className="w-5 h-5 rounded-full border border-slate-200 dark:border-slate-500 flex items-center justify-center"
                         style={{ backgroundColor: color }}
                         title={color}
                       >
@@ -2124,7 +2193,7 @@ export function Editor({
             buttonRef={highlightButtonRef}
             icon={Baseline}
             title={ui.highlightColor}
-            className="text-slate-800"
+            className="text-slate-800 dark:text-slate-200"
             onClick={() => setActiveDropdown(activeDropdown === 'highlightColor' ? null : 'highlightColor')}
           />
           {createPortal(
@@ -2136,7 +2205,7 @@ export function Editor({
                   exit={{ opacity: 0, y: -4 }}
                   data-editor-portal="dropdown"
                   style={{ top: highlightPalettePos.top, left: highlightPalettePos.left }}
-                  className="fixed bg-white border border-slate-200 rounded-xl shadow-xl p-2 z-[260] w-[230px]"
+                  className="editor-dropdown fixed bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-xl p-2 z-[260] w-[230px]"
                 >
                   <div className="grid grid-cols-9 gap-1.5">
                     {colorPalette.map((color) => (
@@ -2144,7 +2213,7 @@ export function Editor({
                         key={`highlight-${color}`}
                         type="button"
                         onClick={() => applyHighlightColor(color)}
-                        className="w-5 h-5 rounded-full border border-slate-200 flex items-center justify-center"
+                        className="w-5 h-5 rounded-full border border-slate-200 dark:border-slate-500 flex items-center justify-center"
                         style={{ backgroundColor: color }}
                         title={color}
                       >
@@ -2159,7 +2228,7 @@ export function Editor({
           )}
         </div>
         
-        <Divider />
+        <ToolbarDivider />
         
         <ToolbarButton
           icon={Link}
@@ -2173,11 +2242,11 @@ export function Editor({
         />
         <ToolbarButton icon={MessageSquarePlus} title={ui.addComment} onClick={insertComment} />
         <ToolbarButton icon={ImageIcon} title={ui.insertImage} onClick={() => setShowImageModal(true)} />
-        <ToolbarDropdown label={ui.table} items={tableItems} id="table" />
-        <ToolbarDropdown label="Code" items={codeLanguageItems} id="codeLang" type="list" triggerIcon={Braces} />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={ui.table} items={tableItems} id="table" />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label="Code" items={codeLanguageItems} id="codeLang" type="list" triggerIcon={Braces} />
         <ToolbarButton icon={Copy} title={ui.copyMarkdown} onClick={() => copyContentAs('markdown')} />
         
-        <Divider />
+        <ToolbarDivider />
         
         <div>
           <ToolbarButton
@@ -2196,16 +2265,16 @@ export function Editor({
                   exit={{ opacity: 0, y: -4 }}
                   data-editor-portal="dropdown"
                   style={{ top: alignMenuPos.top, left: alignMenuPos.left }}
-                  className="fixed z-[260] rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+                  className="editor-dropdown fixed z-[260] rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-600 dark:bg-slate-800"
                 >
-                  <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+                  <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-700">
                     <button
                       type="button"
                       onClick={() => {
                         setAlignment('left');
                         setActiveDropdown(null);
                       }}
-                      className={cn("h-8 w-8 inline-flex items-center justify-center rounded", activeAlignment === 'left' ? "bg-blue-100 text-blue-700" : "text-slate-600 hover:bg-white")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'left' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.alignLeft}
                     >
                       <AlignLeft size={16} />
@@ -2216,7 +2285,7 @@ export function Editor({
                         setAlignment('center');
                         setActiveDropdown(null);
                       }}
-                      className={cn("h-8 w-8 inline-flex items-center justify-center rounded", activeAlignment === 'center' ? "bg-blue-100 text-blue-700" : "text-slate-600 hover:bg-white")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'center' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.alignCenter}
                     >
                       <AlignCenter size={16} />
@@ -2227,7 +2296,7 @@ export function Editor({
                         setAlignment('right');
                         setActiveDropdown(null);
                       }}
-                      className={cn("h-8 w-8 inline-flex items-center justify-center rounded", activeAlignment === 'right' ? "bg-blue-100 text-blue-700" : "text-slate-600 hover:bg-white")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'right' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.alignRight}
                     >
                       <AlignRight size={16} />
@@ -2238,7 +2307,7 @@ export function Editor({
                         setAlignment('justify');
                         setActiveDropdown(null);
                       }}
-                      className={cn("h-8 w-8 inline-flex items-center justify-center rounded", activeAlignment === 'justify' ? "bg-blue-100 text-blue-700" : "text-slate-600 hover:bg-white")}
+                      className={cn("inline-flex h-8 w-8 items-center justify-center rounded", activeAlignment === 'justify' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300" : "text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-600")}
                       title={ui.justify}
                     >
                       <AlignJustify size={16} />
@@ -2251,26 +2320,26 @@ export function Editor({
           )}
         </div>
         
-        <Divider />
+        <ToolbarDivider />
         
-        <ToolbarDropdown label={localize(activeListType)} triggerIcon={List} items={listItems} id="lists" type="list" />
+        <ToolbarDropdown activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} localize={localize} label={localize(activeListType)} triggerIcon={List} items={listItems} id="lists" type="list" />
         <ToolbarButton icon={ListTodo} title={ui.checklist} onClick={() => applyListStyle('Checklist menu')} />
         <ToolbarButton icon={List} title={ui.bulletedList} onClick={() => { document.execCommand('insertUnorderedList'); if (editorRef.current) updateContent(editorRef.current.innerHTML); }} />
         <ToolbarButton icon={ListOrdered} title={ui.numberedList} onClick={() => { document.execCommand('insertOrderedList'); if (editorRef.current) updateContent(editorRef.current.innerHTML); }} />
         <ToolbarButton icon={Outdent} title={ui.decreaseIndent} onClick={() => handleIndent('outdent')} />
         <ToolbarButton icon={Indent} title={ui.increaseIndent} onClick={() => handleIndent('indent')} />
         <ToolbarButton icon={Eraser} title={ui.clearFormatting} onClick={clearFormatting} />
-        <div className="flex-1" />
-        
-        <div className="flex items-center pr-2">
+
+        <div className="flex shrink-0 items-center pl-1 pr-2">
             <button
                 onClick={() => setShowShortcuts(true)}
-                className="p-1 px-2 rounded-full bg-white text-slate-500 hover:text-blue-600 transition-all border border-slate-200 text-[11px] font-bold flex items-center gap-1.5 mr-1 active:scale-95"
+                className="p-1 px-2 rounded-full bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-300 transition-all border border-slate-200 dark:border-slate-600 text-[11px] font-bold flex items-center gap-1.5 active:scale-95 shrink-0"
                 title={ui.keyboardShortcuts}
             >
                 <Keyboard size={12} />
                 {ui.shortcuts}
             </button>
+        </div>
         </div>
       </div>
 
@@ -2318,6 +2387,7 @@ export function Editor({
               ref={editorRef}
               contentEditable
               suppressContentEditableWarning
+              onPaste={handlePaste}
               onInput={(e) => {
                 const editor = e.currentTarget as HTMLDivElement;
                 cleanupTypingStyleMarkers(editor);
@@ -2336,11 +2406,11 @@ export function Editor({
               onSelect={saveCurrentSelection}
               onBlur={saveCurrentSelection}
               data-placeholder=""
-              className="w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 focus:outline-none border-none"
+              className="khmer-doc-font w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 focus:outline-none border-none"
               spellCheck={spellCheckEnabled}
               style={{
                 fontSize: `${fontSize + 5}px`,
-                fontFamily: fontFamily === 'Arial' ? '"Inter", sans-serif' : fontFamily,
+                fontFamily: fontFamily === 'Arial' ? '"Kantumruy Pro", "Inter", sans-serif' : fontFamily,
                 whiteSpace: 'pre-wrap',
                 minHeight: `${pageCount * PAGE_HEIGHT_PX + Math.max(0, pageCount - 1) * PAGE_GAP_PX}px`,
                 padding: `${pagePadding}px`,
@@ -2564,7 +2634,7 @@ export function Editor({
                   <button
                     onClick={handleGenerateImage}
                     disabled={!imagePrompt.trim() || isGeneratingImage}
-                    className="flex-1 py-4 px-6 rounded-2xl bg-[#4285f4] text-white font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-200 disabled:opacity-50"
+                    className="flex-1 py-4 px-6 rounded-2xl bg-[#4285f4] text-white font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-xl shadow-blue-200/80 dark:shadow-blue-950/50 disabled:opacity-50"
                   >
                     {isGeneratingImage ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
                     {isGeneratingImage ? t.generatingImage : t.generate}

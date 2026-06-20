@@ -1,9 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Caveat:wght@400;500;600;700&family=Comfortaa:wght@300;400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Kantumruy+Pro:wght@300;400;500;600;700&family=Lexend:wght@300;400;500;600;700&family=Lobster&family=Siemreap&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-sans: "Inter", "Kantumruy Pro", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Kantumruy Pro", "Inter", "Noto Sans Khmer", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-khmer-doc: "Kantumruy Pro", "Inter", "Noto Sans Khmer", ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -13,9 +16,43 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  .dark {
+    color-scheme: dark;
+  }
+
+  .dark .prose thead {
+    background-color: rgb(30 41 59);
+  }
+
+  .dark .prose th {
+    color: rgb(148 163 184);
+    border-bottom-color: rgb(51 65 85);
+  }
+
+  .dark .prose td {
+    color: rgb(203 213 225);
+    border-bottom-color: rgb(51 65 85);
+    background-color: rgb(15 23 42);
+  }
+
+  .dark .prose table {
+    border-color: rgb(51 65 85);
+  }
+
+  .dark .prose tr:hover td {
+    background-color: rgb(30 41 59);
+  }
+
   /* Improve Khmer line-height and rhythm */
+  :lang(km),
   :lang(kh) {
+    font-family: var(--font-khmer-doc);
     line-height: 1.8;
+  }
+
+  .khmer-doc-font,
+  .khmer-doc-font .prose {
+    font-family: var(--font-khmer-doc);
   }
 
   /* Markdown Table Styling */
@@ -72,8 +109,14 @@
     background: var(--color-slate-200);
     border-radius: 10px;
   }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgb(51 65 85);
+  }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: var(--color-slate-300);
+  }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgb(71 85 105);
   }
   .custom-scrollbar::-webkit-scrollbar-button {
     display: none;
@@ -83,7 +126,7 @@
 
   #pdf-preview-container {
     background: white;
-    padding: 2rem;
+    padding: 0;
     min-height: 100%;
     box-shadow: 0 0 40px rgba(0,0,0,0.05);
   }
@@ -94,5 +137,183 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .editor-toolbar-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-behavior: smooth;
+    touch-action: pan-x;
+    max-width: 100%;
+  }
+
+  .editor-toolbar-scroll::-webkit-scrollbar {
+    height: 5px;
+  }
+
+  .editor-toolbar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .editor-toolbar-scroll::-webkit-scrollbar-thumb {
+    background: rgb(148 163 184 / 0.45);
+    border-radius: 9999px;
+  }
+
+  .dark .editor-toolbar-scroll::-webkit-scrollbar-thumb {
+    background: rgb(100 116 139 / 0.55);
+  }
+
+  .dark .editor-root {
+    background: rgb(2 6 23);
+  }
+
+  .dark .editor-header {
+    background: rgb(15 23 42);
+    border-color: rgb(51 65 85);
+  }
+
+  .dark .editor-title-input {
+    color: rgb(241 245 249);
+  }
+
+  .dark .editor-title-input::placeholder {
+    color: rgb(100 116 139);
+  }
+
+  .dark .editor-menu-btn {
+    color: rgb(203 213 225);
+  }
+
+  .dark .editor-menu-btn:hover {
+    background: rgb(30 41 59);
+  }
+
+  .dark .editor-menu-btn-active {
+    background: rgb(51 65 85);
+    color: rgb(248 250 252);
+  }
+
+  .dark .editor-menu-dropdown,
+  .dark .editor-dropdown {
+    background: rgb(30 41 59);
+    border-color: rgb(71 85 105);
+    box-shadow: 0 10px 40px rgb(0 0 0 / 0.45);
+  }
+
+  .dark .editor-menu-item {
+    color: rgb(226 232 240);
+  }
+
+  .dark .editor-menu-item:hover {
+    background: rgb(51 65 85);
+  }
+
+  .dark .editor-dropdown-item {
+    color: rgb(226 232 240);
+  }
+
+  .dark .editor-dropdown-item:hover {
+    background: rgb(51 65 85);
+  }
+
+  .dark .editor-dropdown-item-active {
+    color: rgb(248 250 252);
+    background: rgb(51 65 85);
+  }
+
+  .dark .editor-dropdown-header {
+    color: rgb(148 163 184);
+  }
+
+  .dark .editor-dropdown-divider {
+    border-color: rgb(71 85 105);
+  }
+
+  .dark .editor-toolbar-trigger {
+    color: rgb(226 232 240);
+  }
+
+  .dark .editor-toolbar-trigger:hover {
+    background: rgb(51 65 85);
+  }
+
+  .dark .editor-toolbar-trigger-open {
+    background: rgb(30 58 138 / 0.45);
+    color: rgb(147 197 253);
+  }
+
+  .dark .editor-toolbar {
+    background: rgb(30 41 59);
+    border-color: rgb(71 85 105);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  }
+
+  .dark .editor-toolbar-btn {
+    color: rgb(226 232 240);
+  }
+
+  .dark .editor-toolbar-btn:hover {
+    background: rgb(51 65 85);
+  }
+
+  .dark .editor-toolbar-btn-active {
+    background: rgb(30 58 138 / 0.45);
+    color: rgb(147 197 253);
+  }
+
+  .dark .editor-toolbar-divider {
+    background: rgb(71 85 105);
+  }
+
+  .dark .editor-search-input {
+    background: rgb(15 23 42);
+    border-color: rgb(51 65 85);
+    color: rgb(226 232 240);
+  }
+
+  .dark [data-code-block-wrap] {
+    border-color: rgb(71 85 105) !important;
+    background: rgb(30 41 59) !important;
+  }
+
+  .dark [data-code-block-wrap] > div:first-child {
+    background: rgb(15 23 42) !important;
+    border-color: rgb(71 85 105) !important;
+    color: rgb(203 213 225) !important;
+  }
+
+  .dark [data-code-block-wrap] pre {
+    background: rgb(2 6 23) !important;
+    color: rgb(226 232 240) !important;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  header,
+  aside,
+  .editor-toolbar,
+  [role="separator"],
+  button {
+    display: none !important;
+  }
+
+  main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .khmer-doc-font,
+  #content {
+    max-width: 100% !important;
+    padding: 0 !important;
+    box-shadow: none !important;
   }
 }

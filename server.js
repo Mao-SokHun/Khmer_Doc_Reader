@@ -1,20 +1,17 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
+import { createPool } from './db.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.API_PORT || 3001);
 
-const pool = new Pool({
-  host: process.env.PGHOST || 'localhost',
-  port: Number(process.env.PGPORT || 5432),
-  database: process.env.PGDATABASE || 'postgres',
-  user: process.env.PGUSER || 'postgres',
-  password: process.env.PGPASSWORD || '4944',
-});
+const pool = createPool();
+const dbLabel = process.env.DATABASE_URL?.trim()
+  ? 'Neon PostgreSQL'
+  : `${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || 5432}`;
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
@@ -33,6 +30,8 @@ const toLesson = (row) => ({
   content: row.content,
   ownerId: row.owner_id,
   order: row.order_index,
+  tags: Array.isArray(row.tags) ? row.tags : [],
+  isFavorite: Boolean(row.is_favorite),
 });
 
 const toSnapshot = (row) => ({
@@ -83,7 +82,37 @@ const initDb = async () => {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_lessons_owner ON lessons(owner_id);');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_lessons_folder ON lessons(folder_id);');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_snapshots_lesson_created ON lesson_snapshots(lesson_id, created_at DESC);');
+
+  await pool.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';`);
+  await pool.query(`ALTER TABLE lessons ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT false;`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lesson_shares (
+      id TEXT PRIMARY KEY,
+      lesson_id TEXT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+      token TEXT UNIQUE NOT NULL,
+      role TEXT NOT NULL DEFAULT 'viewer',
+      access TEXT NOT NULL DEFAULT 'anyone',
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_lesson_shares_token ON lesson_shares(token);');
 };
+
+const dbReady = initDb().catch((error) => {
+  console.error('Failed to initialize PostgreSQL schema:', error);
+  throw error;
+});
+
+app.use(async (_req, _res, next) => {
+  try {
+    await dbReady;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get('/api/health', async (_req, res) => {
   try {
@@ -209,18 +238,32 @@ app.patch('/api/lessons/:id', async (req, res) => {
     }
     const updatedLesson = result.rows[0];
     if (createSnapshot) {
-      await client.query(
-        `INSERT INTO lesson_snapshots (id, lesson_id, owner_id, title, content, trigger_type)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          crypto.randomUUID(),
-          updatedLesson.id,
-          updatedLesson.owner_id,
-          updatedLesson.title,
-          updatedLesson.content,
-          triggerType,
-        ]
+      const lastSnap = await client.query(
+        `SELECT title, content FROM lesson_snapshots
+         WHERE lesson_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [updatedLesson.id]
       );
+      const prev = lastSnap.rows[0];
+      const changed =
+        !prev ||
+        prev.title !== updatedLesson.title ||
+        prev.content !== updatedLesson.content;
+      if (changed) {
+        await client.query(
+          `INSERT INTO lesson_snapshots (id, lesson_id, owner_id, title, content, trigger_type)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            crypto.randomUUID(),
+            updatedLesson.id,
+            updatedLesson.owner_id,
+            updatedLesson.title,
+            updatedLesson.content,
+            triggerType,
+          ]
+        );
+      }
     }
     await client.query('COMMIT');
     res.json(toLesson(result.rows[0]));
@@ -326,13 +369,151 @@ app.delete('/api/lessons/:id', async (req, res) => {
   }
 });
 
-initDb()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Postgres API running on http://localhost:${PORT}`);
+app.post('/api/lessons/:id/duplicate', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ownerId } = req.body || {};
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const source = await pool.query('SELECT * FROM lessons WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (source.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
+    const row = source.rows[0];
+    const newId = crypto.randomUUID();
+    const result = await pool.query(
+      `INSERT INTO lessons (id, folder_id, owner_id, title, content, order_index, tags, is_favorite)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+       RETURNING *`,
+      [
+        newId,
+        row.folder_id,
+        ownerId,
+        `${row.title} (copy)`,
+        row.content,
+        Number(row.order_index) + 1,
+        row.tags || [],
+      ]
+    );
+    res.status(201).json(toLesson(result.rows[0]));
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.patch('/api/lessons/:id/meta', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ownerId, tags, isFavorite } = req.body || {};
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const result = await pool.query(
+      `UPDATE lessons
+       SET tags = COALESCE($3, tags),
+           is_favorite = COALESCE($4, is_favorite),
+           updated_at = NOW()
+       WHERE id = $1 AND owner_id = $2
+       RETURNING *`,
+      [id, ownerId, Array.isArray(tags) ? tags : null, typeof isFavorite === 'boolean' ? isFavorite : null]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
+    res.json(toLesson(result.rows[0]));
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get('/api/search', async (req, res) => {
+  try {
+    const ownerId = String(req.query.ownerId || '');
+    const q = String(req.query.q || '').trim();
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    if (!q) return res.json([]);
+    const pattern = `%${q.replace(/[%_]/g, '')}%`;
+    const result = await pool.query(
+      `SELECT id, title, content FROM lessons
+       WHERE owner_id = $1 AND (title ILIKE $2 OR content ILIKE $2)
+       ORDER BY updated_at DESC
+       LIMIT 40`,
+      [ownerId, pattern]
+    );
+    res.json(result.rows.map((row) => ({ id: row.id, title: row.title, content: row.content })));
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/lessons/:id/share', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { ownerId, role = 'viewer', access = 'anyone', expiresInDays = 30 } = req.body || {};
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const lesson = await pool.query('SELECT id FROM lessons WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (lesson.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
+    const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    const shareId = crypto.randomUUID();
+    const expiresAt = expiresInDays
+      ? new Date(Date.now() + Number(expiresInDays) * 86400000).toISOString()
+      : null;
+    await pool.query(
+      `INSERT INTO lesson_shares (id, lesson_id, token, role, access, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [shareId, id, token, role, access, expiresAt]
+    );
+    res.status(201).json({ token, role, access, expiresAt });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.get('/api/share/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const shareRes = await pool.query('SELECT * FROM lesson_shares WHERE token = $1', [token]);
+    if (shareRes.rowCount === 0) return res.status(404).json({ error: 'Share link not found' });
+    const share = shareRes.rows[0];
+    if (share.expires_at && new Date(share.expires_at).getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Share link expired' });
+    }
+    const lessonRes = await pool.query(
+      'SELECT id, folder_id, title, content FROM lessons WHERE id = $1',
+      [share.lesson_id]
+    );
+    if (lessonRes.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
+    const lesson = lessonRes.rows[0];
+    res.json({
+      share: {
+        token: share.token,
+        lessonId: share.lesson_id,
+        role: share.role,
+        access: share.access,
+        expiresAt: share.expires_at,
+      },
+      lesson: {
+        id: lesson.id,
+        folderId: lesson.folder_id,
+        title: lesson.title,
+        content: lesson.content,
+      },
     });
-  })
-  .catch((error) => {
-    console.error('Failed to initialize PostgreSQL schema:', error);
-    process.exit(1);
-  });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.use((error, _req, res, _next) => {
+  console.error(error);
+  res.status(500).json({ error: String(error) });
+});
+
+export default app;
+
+const isServerless = Boolean(process.env.VERCEL);
+if (!isServerless) {
+  dbReady
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Postgres API running on http://localhost:${PORT} (${dbLabel})`);
+      });
+    })
+    .catch((error) => {
+      console.error('Failed to start API server:', error);
+      process.exit(1);
+    });
+}

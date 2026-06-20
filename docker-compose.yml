@@ -1,17 +1,21 @@
-# Khmer Lesson Doc — full stack (PostgreSQL + API + Vite frontend)
+# Khmer Lesson Doc — full stack (API + Vite frontend; DB: Neon or local PostgreSQL)
 #
 # Setup:
 #   cp .env.example .env
-#   # Edit .env (PGPASSWORD, GEMINI_API_KEY, etc.)
+#   # Neon (recommended): paste DATABASE_URL from Neon Console into .env
+#   # Local DB instead: leave DATABASE_URL empty and set PGHOST/PGPASSWORD
 #
-# Start everything (dev, hot reload on port 3000):
-#   docker compose --profile dev up --build
+# Start everything (dev, hot reload on port 3000) with Neon:
+#   docker compose --profile dev up --build api web
 #
-# API + database only (no frontend):
-#   docker compose up db api
+# Start with local PostgreSQL container:
+#   docker compose --profile dev --profile local-db up --build
 #
-# Production-style preview (built static app; use instead of dev web):
-#   docker compose --profile prod up --build
+# API + Neon only (no frontend):
+#   docker compose up api
+#
+# Production (app + API + optional local DB + Watchtower):
+#   docker compose --profile prod up -d --build api web-prod
 #
 # URLs (from your machine):
 #   App:  http://localhost:3000
@@ -21,9 +25,12 @@ name: khmer-lesson-doc
 
 services:
   db:
+    profiles: [local-db]
     image: postgres:16-alpine
     container_name: khmer-lesson-doc-db
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     environment:
       POSTGRES_USER: ${PGUSER:-postgres}
       POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
@@ -49,12 +56,16 @@ services:
       dockerfile: Dockerfile
     container_name: khmer-lesson-doc-api
     restart: unless-stopped
+    labels:
+      # Local images from `docker compose build` — deploy via GitHub Actions, not Watchtower
+      - "com.centurylinklabs.watchtower.enable=false"
     command: node server.js
     env_file:
       - .env
     environment:
-      PGHOST: db
-      PGPORT: 5432
+      DATABASE_URL: ${DATABASE_URL:-}
+      PGHOST: ${PGHOST:-db}
+      PGPORT: ${PGPORT:-5432}
       PGDATABASE: ${PGDATABASE:-khmer_lesson_doc}
       PGUSER: ${PGUSER:-postgres}
       PGPASSWORD: ${PGPASSWORD:-postgres}
@@ -65,6 +76,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        required: false
 
   # Development frontend (Vite dev server)
   web:
@@ -97,6 +109,8 @@ services:
       dockerfile: Dockerfile
     container_name: khmer-lesson-doc-web-prod
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     command: sh -c "npm run build && npm run preview -- --host 0.0.0.0 --port 3000"
     env_file:
       - .env
@@ -107,6 +121,22 @@ services:
       - "3000:3000"
     depends_on:
       - api
+
+  # Auto-update containers that have label watchtower.enable=true (see DEPLOY.md)
+  watchtower:
+    profiles: [prod]
+    image: containrrr/watchtower:1.7.1
+    container_name: khmer-lesson-doc-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: ${WATCHTOWER_POLL_INTERVAL:-86400}
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_INCLUDE_STOPPED: "false"
+      WATCHTOWER_ROLLING_RESTART: "true"
+      TZ: ${TZ:-Asia/Phnom_Penh}
 
 volumes:
   postgres_data:

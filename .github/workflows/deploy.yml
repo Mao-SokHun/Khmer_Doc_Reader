@@ -52,8 +52,7 @@ jobs:
               exit 1
             fi
 
-            docker compose --profile prod pull db 2>/dev/null || true
-            docker compose --profile prod up -d --build --remove-orphans
+            docker compose --profile prod up -d --build --remove-orphans api web-prod watchtower
             docker image prune -f
 
-            echo "Deploy finished. App: port 3000, API: port 3001"
+            echo "Deploy finished. App: port 3000, API: port 3001 (DATABASE_URL from server .env)"
