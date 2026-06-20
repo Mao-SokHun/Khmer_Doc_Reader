@@ -26,6 +26,7 @@ interface SortableLessonItemProps {
   activeLessonId: string | null;
   activeHeadingId?: string | null;
   onSelectLesson: (id: string, focusText?: string, headingId?: string) => void;
+  onDeleteLesson: (id: string) => void;
   onToggleFavorite?: (lessonId: string) => void;
   t: any;
 }
@@ -43,7 +44,7 @@ const getLessonPreview = (raw: string) => {
     .trim();
 };
 
-const SortableLessonItem = memo(function SortableLessonItem({ lesson, activeLessonId, activeHeadingId, onSelectLesson, onToggleFavorite, t }: SortableLessonItemProps) {
+const SortableLessonItem = memo(function SortableLessonItem({ lesson, activeLessonId, activeHeadingId, onSelectLesson, onDeleteLesson, onToggleFavorite, t }: SortableLessonItemProps) {
   const {
     attributes,
     listeners,
@@ -96,12 +97,20 @@ const SortableLessonItem = memo(function SortableLessonItem({ lesson, activeLess
             <button
               type="button"
               onClick={() => onToggleFavorite(lesson.id)}
-              className="absolute right-0 top-1 rounded p-0.5 text-amber-400 hover:text-amber-500"
+              className="absolute right-7 top-1 rounded p-0.5 text-amber-400 hover:text-amber-500"
               title="Favorite"
             >
               <Star size={13} className={lesson.isFavorite ? 'fill-current' : ''} />
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => onDeleteLesson(lesson.id)}
+            className="absolute right-0 top-1 rounded p-0.5 text-slate-400 opacity-0 transition-opacity hover:text-red-500 group-hover/item:opacity-100"
+            title={t.delete}
+          >
+            <Trash2 size={13} />
+          </button>
           {isActive ? (
             <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
               {outlineHeadings.length > 0 ? (
@@ -318,6 +327,7 @@ export function Sidebar({
                           activeLessonId={activeLessonId}
                           activeHeadingId={activeHeadingId}
                           onSelectLesson={onSelectLesson}
+                          onDeleteLesson={onDeleteLesson}
                           onToggleFavorite={onToggleFavorite}
                           t={t}
                         />

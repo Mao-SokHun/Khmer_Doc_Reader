@@ -30,7 +30,8 @@ import {
   CopyPlus,
   FileDown,
   Presentation,
-  MoreHorizontal
+  MoreHorizontal,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -38,6 +39,7 @@ import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { PresentationMode } from './components/PresentationMode';
 import { TemplatePickerModal } from './components/TemplatePickerModal';
 import { NameInputModal } from './components/NameInputModal';
+import { ConfirmModal } from './components/ConfirmModal';
 import { getOwnerId, getOwnerLabel } from './lib/auth';
 import { loadFontSize, saveFontSize } from './lib/preferences';
 import type { LessonTemplate } from './lib/templates';
@@ -134,6 +136,7 @@ export default function App() {
     | { kind: 'renameTab'; folderId: string; currentName: string }
     | null
   >(null);
+  const [deleteLessonTarget, setDeleteLessonTarget] = useState<{ id: string; title: string } | null>(null);
   const [lessonSnapshots, setLessonSnapshots] = useState<LessonSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
@@ -727,12 +730,21 @@ ${activeLesson.content}`;
     }
   };
 
+  const requestDeleteLesson = (id: string) => {
+    const lesson = lessons.find((l) => l.id === id);
+    if (!lesson) return;
+    setDeleteLessonTarget({ id, title: lesson.title });
+  };
+
   const deleteLesson = async (id: string) => {
-    if (!confirm(t.deleteLessonConfirm)) return;
     try {
       await apiFetch<null>(`/api/lessons/${id}`, { method: 'DELETE' });
       setLessons((prev) => prev.filter((lesson) => lesson.id !== id));
-      if (activeLessonId === id) setActiveLessonId(null);
+      if (activeLessonId === id) {
+        setActiveLessonId(null);
+        setIsEditing(false);
+      }
+      setDeleteLessonTarget(null);
     } catch (e) {
       console.error(e);
     }
@@ -938,7 +950,7 @@ ${activeLesson.content}`;
           onDeleteFolder={deleteFolder}
           onUpdateFolder={updateFolder}
           onRenameFolder={requestRenameFolder}
-          onDeleteLesson={deleteLesson}
+          onDeleteLesson={requestDeleteLesson}
           onReorderLessons={handleReorderLessons}
           onToggleFavorite={toggleFavorite}
           onToggleFavoritesOnly={() => setShowFavoritesOnly((v) => !v)}
@@ -1106,6 +1118,17 @@ ${activeLesson.content}`;
                         <CopyPlus size={16} className="text-violet-500" />
                         {t.duplicate}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeLessonId) requestDeleteLesson(activeLessonId);
+                          setShowHeaderMoreMenu(false);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                      >
+                        <Trash2 size={16} />
+                        {t.delete}
+                      </button>
                       <div className="my-1 border-t border-slate-100 dark:border-slate-700" />
                       <p className="px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-400">
                         {t.translate}
@@ -1212,6 +1235,7 @@ ${activeLesson.content}`;
                   setActiveLessonId(id);
                   setIsEditing(true);
                 }}
+                onDeleteLesson={requestDeleteLesson}
                 onAddFolder={addFolder}
                 onAddLesson={promptAddLesson}
                 onSearch={() => setShowSearchModal(true)}
@@ -1639,6 +1663,21 @@ ${activeLesson.content}`;
           cancelLabel={t.cancel}
           onConfirm={handleNameModalConfirm}
           onClose={() => setNameModal(null)}
+        />
+
+        <ConfirmModal
+          open={deleteLessonTarget !== null}
+          title={t.deleteLessonTitle}
+          message={
+            deleteLessonTarget
+              ? `${t.deleteLessonMessage}\n\n「${localizeSeedLabel(deleteLessonTarget.title)}」`
+              : t.deleteLessonMessage
+          }
+          confirmLabel={t.delete}
+          cancelLabel={t.cancel}
+          destructive
+          onConfirm={() => deleteLessonTarget && deleteLesson(deleteLessonTarget.id)}
+          onClose={() => setDeleteLessonTarget(null)}
         />
 
         {showPresentation && activeLesson ? (

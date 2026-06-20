@@ -9,6 +9,7 @@ import {
   Search,
   Sparkles,
   Star,
+  Trash2,
 } from 'lucide-react';
 import { Language, translations } from '../i18n';
 import { cn } from '../lib/utils';
@@ -28,6 +29,7 @@ type HomePageProps = {
   lessons: HomeLesson[];
   onOpenLesson: (id: string) => void;
   onEditLesson: (id: string) => void;
+  onDeleteLesson: (id: string) => void;
   onAddFolder: () => void;
   onAddLesson: (folderId: string) => void;
   onSearch: () => void;
@@ -40,6 +42,7 @@ export function HomePage({
   lessons,
   onOpenLesson,
   onEditLesson,
+  onDeleteLesson,
   onAddFolder,
   onAddLesson,
   onSearch,
@@ -124,7 +127,7 @@ export function HomePage({
               {lang === 'kh' ? 'មេរៀនរបស់អ្នក' : 'Your lessons'}
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">
-              {lang === 'kh' ? 'ចុចដើម្បីបើក ឬកែសម្រួល' : 'Click to open or edit'}
+              {lang === 'kh' ? 'ចុចដើម្បីបើក កែសម្រួល ឬលុប' : 'Open, edit, or delete'}
             </p>
           </div>
           {defaultFolderId ? (
@@ -185,6 +188,14 @@ export function HomePage({
                       title={t.edit}
                     >
                       <Edit3 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteLesson(lesson.id)}
+                      className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-slate-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-600 dark:text-slate-400 dark:hover:border-red-800 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                      title={t.delete}
+                    >
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </motion.article>
