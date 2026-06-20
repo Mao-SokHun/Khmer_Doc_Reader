@@ -23,14 +23,23 @@ export async function formatLessonMarkdownWithAi(sourceMarkdown: string, lang: '
   return normalizeImportedMarkdown(raw);
 }
 
-export async function formatLessonWithAiHtml(content: string, lang: 'kh' | 'en'): Promise<string> {
+export async function formatLessonWithAiHtml(
+  content: string,
+  lang: 'kh' | 'en'
+): Promise<{ html: string; usedAi: boolean }> {
   const md = contentToPlainMarkdown(content);
-  if (!md) return (content || '').trim();
+  if (!md) return { html: (content || '').trim(), usedAi: false };
+
   if (await isAiConfigured()) {
-    const aiMd = await formatLessonMarkdownWithAi(md, lang);
-    return markdownToEditorHtml(aiMd);
+    try {
+      const aiMd = await formatLessonMarkdownWithAi(md, lang);
+      return { html: markdownToEditorHtml(aiMd), usedAi: true };
+    } catch {
+      /* fall through to local formatter */
+    }
   }
-  return formatLessonContent(content);
+
+  return { html: formatLessonContent(content), usedAi: false };
 }
 
 export async function translateLessonMarkdown(content: string, targetLang: string): Promise<string> {

@@ -15,6 +15,7 @@ export function isHtmlContent(content: string): boolean {
 
 function htmlBrBlobToMarkdown(html: string): string {
   return html
+    .replace(/<\/p>\s*<p[^>]*>/gi, '\n\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/g, '&')
@@ -26,6 +27,95 @@ function htmlBrBlobToMarkdown(html: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** Lines like "1. User & Account Management" are section titles, not list items. */
+function isNumberedSectionHeader(line: string): boolean {
+  const m = line.trim().match(/^(\d+)\.\s+(.+)$/);
+  if (!m) return false;
+  const title = m[2].trim();
+  if (!title || title.length > 140) return false;
+  if (/^[-*•]\s/.test(title)) return false;
+  // Skip lines that read like sentence steps inside a paragraph
+  if (/^[a-z]/.test(title) && title.split(/\s+/).length > 12) return false;
+  return true;
+}
+
+/** Turn dense plain-text feature lists into headings + bullets. */
+export function structurePlainLessonText(raw: string): string {
+  const lines = (raw || '').split('\n');
+  const out: string[] = [];
+  let afterSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (out.length && out[out.length - 1] !== '') out.push('');
+      afterSection = false;
+      continue;
+    }
+
+    if (/^#{1,6}\s/.test(trimmed)) {
+      out.push(trimmed);
+      afterSection = false;
+      continue;
+    }
+
+    if (isNumberedSectionHeader(trimmed)) {
+      const m = trimmed.match(/^(\d+)\.\s+(.+)$/)!;
+      out.push(`## ${m[1]}. ${m[2].trim()}`);
+      afterSection = true;
+      continue;
+    }
+
+    if (/^[-*•]\s+/.test(trimmed)) {
+      out.push(trimmed.replace(/^•\s+/, '- ').replace(/^\*\s+/, '- '));
+      afterSection = false;
+      continue;
+    }
+
+    if (/^\d+\)\s+/.test(trimmed)) {
+      out.push(trimmed.replace(/^(\d+\))\s+/, '- '));
+      continue;
+    }
+
+    // Label lines: "Feature:" or "Features:" followed by text
+    const labelMatch = trimmed.match(/^([A-Za-z\u1780-\u17FF][\w\s/&-]{0,40}):\s*(.+)$/);
+    if (labelMatch && labelMatch[2].length > 3) {
+      out.push(`**${labelMatch[1].trim()}:** ${labelMatch[2].trim()}`);
+      afterSection = false;
+      continue;
+    }
+
+    // Lines under a numbered section → bullet points
+    if (afterSection && trimmed.length < 220) {
+      out.push(`- ${trimmed}`);
+      continue;
+    }
+
+    afterSection = false;
+    out.push(trimmed);
+  }
+
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function plainTextNeedsStructure(text: string): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  if (/^\d+\.\s+\S/m.test(trimmed) && isNumberedSectionHeader(trimmed.split('\n').find((l) => l.trim()) || '')) {
+    return true;
+  }
+  const sectionCount = (trimmed.match(/^\d+\.\s+[A-Z\u1780-\u17FF]/gm) || []).length;
+  if (sectionCount >= 2) return true;
+  if (/^•\s+/m.test(trimmed)) return true;
+  // Many short lines without list markers
+  const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+  const shortLines = lines.filter((l) => l.length > 0 && l.length < 100 && !/^[-*#]/.test(l));
+  if (lines.length >= 6 && shortLines.length / lines.length > 0.6 && !/^\s*[-*]\s/m.test(trimmed)) {
+    return true;
+  }
+  return false;
 }
 
 /** Clean messy MD/HTML (Google Docs paste, broken imports) into readable Markdown. */
@@ -46,8 +136,13 @@ export function normalizeImportedMarkdown(raw: string): string {
 
   // Normalize list markers and spacing
   text = text.replace(/^\*\s+/gm, '- ');
+  text = text.replace(/^\u2022\s+/gm, '- ');
   text = text.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
   text = text.replace(/\n{3,}/g, '\n\n');
+
+  if (plainTextNeedsStructure(text)) {
+    text = structurePlainLessonText(text);
+  }
 
   return text.trim();
 }
@@ -80,10 +175,14 @@ export function formatLessonContent(content: string): string {
   return markdownToEditorHtml(md);
 }
 
-/** Whether the lesson still needs auto layout (visible *, **, ```, ##). */
+/** Whether the lesson still needs auto layout. */
 export function needsLessonFormatting(content: string): boolean {
   const raw = (content || '').trim();
   if (!raw) return false;
+
+  const plain = isHtmlContent(raw) ? htmlBrBlobToMarkdown(raw) : raw;
+
+  if (plainTextNeedsStructure(plain)) return true;
 
   if (!isHtmlContent(raw)) {
     return plainTextHasMarkdownSyntax(raw);
@@ -93,11 +192,14 @@ export function needsLessonFormatting(content: string): boolean {
     return false;
   }
 
-  if (/<h[1-6][\s>]/i.test(raw) && !plainTextHasMarkdownSyntax(htmlBrBlobToMarkdown(raw))) {
+  if (/<h[1-6][\s>]/i.test(raw) && !plainTextHasMarkdownSyntax(plain)) {
     return false;
   }
 
-  return plainTextHasMarkdownSyntax(htmlBrBlobToMarkdown(raw));
+  // Wall-of-text HTML: one block with many line breaks
+  if (/<p[^>]*>[\s\S]*<br[\s\S]*<br/i.test(raw)) return true;
+
+  return plainTextHasMarkdownSyntax(plain);
 }
 
 function isBrokenMarkdownHtml(html: string): boolean {
@@ -402,6 +504,15 @@ export function markdownToEditorHtml(value: string): string {
       const level = heading[1].length;
       const text = heading[2].replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       out.push(`<h${level}>${text}</h${level}>`);
+      continue;
+    }
+
+    // "1. Section Title" as standalone line → heading (not ordered list)
+    const numberedSection = line.match(/^(\d+)\.\s+(.+)$/);
+    if (numberedSection && isNumberedSectionHeader(line)) {
+      closeList();
+      const text = numberedSection[2].replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      out.push(`<h2>${numberedSection[1]}. ${text}</h2>`);
       continue;
     }
 

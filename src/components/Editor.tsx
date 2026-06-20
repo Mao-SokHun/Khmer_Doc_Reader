@@ -1340,7 +1340,7 @@ export function Editor({
 
     setFormatLessonBusy(true);
     try {
-      const formatted = await formatLessonWithAiHtml(current, lang);
+      const { html: formatted } = await formatLessonWithAiHtml(current, lang);
       editor.innerHTML = formatted;
       sanitizeEditorDom(editor);
       decorateCodeBlocks(editor);
@@ -1348,7 +1348,16 @@ export function Editor({
       saveCurrentSelection();
     } catch (error) {
       console.error('Format lesson failed:', error);
-      alert(ui.formatLessonAiFailed);
+      try {
+        const local = formatLessonContent(current);
+        editor.innerHTML = local;
+        sanitizeEditorDom(editor);
+        decorateCodeBlocks(editor);
+        updateContent(local);
+        saveCurrentSelection();
+      } catch {
+        alert(ui.formatLessonAiFailed);
+      }
     } finally {
       setFormatLessonBusy(false);
     }

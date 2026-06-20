@@ -861,13 +861,20 @@ export default function App() {
 
     setIsFormattingLesson(true);
     try {
-      const formatted = await formatLessonWithAiHtml(activeLesson.content, lang);
+      const { html: formatted, usedAi } = await formatLessonWithAiHtml(activeLesson.content, lang);
       await saveLesson(activeLesson.title, formatted, true);
       setEditorContentReloadKey((key) => key + 1);
-      alert(aiOn ? t.formatLessonAiDone : t.formatLessonDone);
+      alert(usedAi ? t.formatLessonAiDone : t.formatLessonDone);
     } catch (e) {
       console.error('Format lesson failed:', e);
-      alert(t.formatLessonAiFailed);
+      try {
+        const local = formatLessonContent(activeLesson.content);
+        await saveLesson(activeLesson.title, local, true);
+        setEditorContentReloadKey((key) => key + 1);
+        alert(t.formatLessonDone);
+      } catch {
+        alert(t.formatLessonAiFailed);
+      }
     } finally {
       setIsFormattingLesson(false);
       setShowHeaderMoreMenu(false);
