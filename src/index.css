@@ -73,16 +73,48 @@
     color: rgb(255 255 255) !important;
   }
 
-  /* Override inline light-mode colors saved from the rich editor */
-  .dark .khmer-doc-font [style*="color"],
-  .dark .khmer-doc-font .doc-viewer-html [style*="color"],
+  /* Override inline light-mode colors in viewer (not editor typing surface) */
   .dark #document-to-export [style*="color"],
+  .dark .doc-viewer-html [style*="color"],
+  .dark .khmer-doc-font .prose [style*="color"],
+  .dark .khmer-doc-font .doc-viewer-html [style*="color"] {
+    color: rgb(241 245 249) !important;
+  }
+
+  .dark #document-to-export :is(h1, h2, h3, h4, h5, h6)[style*="color"],
+  .dark .doc-viewer-html :is(h1, h2, h3, h4, h5, h6)[style*="color"],
+  .dark .khmer-doc-font .prose :is(h1, h2, h3, h4, h5, h6)[style*="color"],
+  .dark .khmer-doc-font .doc-viewer-html :is(h1, h2, h3, h4, h5, h6)[style*="color"] {
+    color: rgb(255 255 255) !important;
+  }
+
+  /* Prevent pasted table/column HTML from splitting prose into narrow strips */
+  .editor-paper .editor-surface :where(table) {
+    width: 100% !important;
+    max-width: 100%;
+    table-layout: auto !important;
+    column-count: auto !important;
+  }
+
+  .editor-paper .editor-surface :where(td, th) {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    white-space: normal !important;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .editor-paper .editor-surface :where(div, span, p)[style*="column-count"] {
+    column-count: auto !important;
+    columns: auto !important;
+  }
+
+  /* Legacy editor inline colors — skip live editor surface to avoid breaking caret */
   .dark .editor-paper .editor-surface [style*="color"] {
     color: rgb(241 245 249) !important;
   }
 
-  .dark .khmer-doc-font :is(h1, h2, h3, h4, h5, h6)[style*="color"],
-  .dark #document-to-export :is(h1, h2, h3, h4, h5, h6)[style*="color"],
   .dark .editor-paper .editor-surface :is(h1, h2, h3, h4, h5, h6)[style*="color"] {
     color: rgb(255 255 255) !important;
   }
@@ -380,6 +412,7 @@
 
   .dark .editor-paper .editor-surface {
     color: rgb(241 245 249) !important;
+    caret-color: rgb(241 245 249);
   }
 
   .dark .editor-paper .editor-surface :where(p, li, ul, ol, span, blockquote, td, div:not([data-code-block-wrap])) {

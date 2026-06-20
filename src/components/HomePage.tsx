@@ -95,7 +95,7 @@ export function HomePage({
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200/80 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
                 <Sparkles size={16} />
-                {lang === 'kh' ? 'គំរូមេរៀន' : 'Templates'}
+                {t.templates}
               </button>
             ) : null}
             <button
@@ -110,10 +110,10 @@ export function HomePage({
         </div>
 
         <div className="relative z-10 mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:max-w-lg">
-          <StatCard label={lang === 'kh' ? 'មេរៀន' : 'Lessons'} value={lessons.length} />
-          <StatCard label={lang === 'kh' ? 'ផ្ទាំង' : 'Tabs'} value={folders.length} />
+          <StatCard label={t.statLessons} value={lessons.length} />
+          <StatCard label={t.statTabs} value={folders.length} />
           <StatCard
-            label={lang === 'kh' ? 'ពេញចិត្ត' : 'Favorites'}
+            label={t.statFavorites}
             value={lessons.filter((l) => l.isFavorite).length}
             className="col-span-2 sm:col-span-1"
           />
@@ -123,12 +123,8 @@ export function HomePage({
       <section className="mt-10">
         <div className="mb-5 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-              {lang === 'kh' ? 'មេរៀនរបស់អ្នក' : 'Your lessons'}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">
-              {lang === 'kh' ? 'ចុចដើម្បីបើក កែសម្រួល ឬលុប' : 'Open, edit, or delete'}
-            </p>
+            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-200">{t.yourLessons}</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">{t.yourLessonsHint}</p>
           </div>
           {defaultFolderId ? (
             <button
@@ -143,7 +139,7 @@ export function HomePage({
         </div>
 
         {lessons.length === 0 ? (
-          <EmptyState lang={lang} onAddFolder={onAddFolder} />
+          <EmptyState t={t} onAddFolder={onAddFolder} />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {lessons.map((lesson, index) => {
@@ -179,13 +175,14 @@ export function HomePage({
                       className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-200/70 px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-300/70 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                     >
                       <BookOpen size={14} />
-                      {lang === 'kh' ? 'បើក' : 'Open'}
+                      {t.open}
                     </button>
                     <button
                       type="button"
                       onClick={() => onEditLesson(lesson.id)}
                       className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-slate-500 transition-colors hover:border-blue-300 hover:text-blue-600 dark:border-slate-600 dark:text-slate-400 dark:hover:border-blue-700 dark:hover:text-blue-400"
                       title={t.edit}
+                      aria-label={t.edit}
                     >
                       <Edit3 size={14} />
                     </button>
@@ -194,6 +191,7 @@ export function HomePage({
                       onClick={() => onDeleteLesson(lesson.id)}
                       className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-slate-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-600 dark:text-slate-400 dark:hover:border-red-800 dark:hover:bg-red-950/30 dark:hover:text-red-400"
                       title={t.delete}
+                      aria-label={t.delete}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -245,25 +243,19 @@ function StatCard({
   );
 }
 
-function EmptyState({ lang, onAddFolder }: { lang: Language; onAddFolder: () => void }) {
+function EmptyState({ t, onAddFolder }: { t: (typeof translations)['kh']; onAddFolder: () => void }) {
   return (
     <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900/40">
       <BookOpen size={44} className="mx-auto text-slate-300 dark:text-slate-600" />
-      <p className="mt-4 text-base font-semibold text-slate-700 dark:text-slate-300">
-        {lang === 'kh' ? 'មិនទាន់មានមេរៀននៅឡើយទេ' : 'No lessons yet'}
-      </p>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-500">
-        {lang === 'kh'
-          ? 'បង្កើតផ្ទាំងថ្មី រួចបន្ថែមមេរៀនដំបូងរបស់អ្នក'
-          : 'Create a tab first, then add your first lesson'}
-      </p>
+      <p className="mt-4 text-base font-semibold text-slate-700 dark:text-slate-300">{t.noLessonsYet}</p>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500 dark:text-slate-500">{t.noLessonsHint}</p>
       <button
         type="button"
         onClick={onAddFolder}
         className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-500"
       >
         <Plus size={16} />
-        {lang === 'kh' ? 'បង្កើតផ្ទាំងថ្មី' : 'Create new tab'}
+        {t.createTab}
       </button>
     </div>
   );

@@ -168,15 +168,16 @@ app.post('/api/folders', async (req, res) => {
 app.patch('/api/folders/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, order } = req.body || {};
+    const { name, order, ownerId } = req.body || {};
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
     const result = await pool.query(
       `UPDATE folders
        SET name = COALESCE($2, name),
            order_index = COALESCE($3, order_index),
            updated_at = NOW()
-       WHERE id = $1
+       WHERE id = $1 AND owner_id = $4
        RETURNING *`,
-      [id, name, Number.isFinite(order) ? order : null]
+      [id, name, Number.isFinite(order) ? order : null, ownerId]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: 'Folder not found' });
     res.json(toFolder(result.rows[0]));
@@ -188,7 +189,10 @@ app.patch('/api/folders/:id', async (req, res) => {
 app.delete('/api/folders/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM folders WHERE id = $1', [id]);
+    const ownerId = String(req.query.ownerId || req.body?.ownerId || '');
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const result = await pool.query('DELETE FROM folders WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Folder not found' });
     res.status(204).end();
   } catch (error) {
     res.status(500).json({ error: String(error) });
@@ -244,7 +248,10 @@ app.patch('/api/lessons/:id', async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { title, content, order, folderId, createSnapshot = false, triggerType = 'manual' } = req.body || {};
+    const { title, content, order, folderId, createSnapshot = false, triggerType = 'manual', ownerId } = req.body || {};
+    if (!ownerId) {
+      return res.status(400).json({ error: 'ownerId is required' });
+    }
     await client.query('BEGIN');
     const result = await client.query(
       `UPDATE lessons
@@ -253,9 +260,9 @@ app.patch('/api/lessons/:id', async (req, res) => {
            order_index = COALESCE($4, order_index),
            folder_id = COALESCE($5, folder_id),
            updated_at = NOW()
-       WHERE id = $1
+       WHERE id = $1 AND owner_id = $6
        RETURNING *`,
-      [id, title, content, Number.isFinite(order) ? order : null, folderId]
+      [id, title, content, Number.isFinite(order) ? order : null, folderId, ownerId]
     );
     if (result.rowCount === 0) {
       await client.query('ROLLBACK');
@@ -387,7 +394,10 @@ app.post('/api/lessons/reorder', async (req, res) => {
 app.delete('/api/lessons/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM lessons WHERE id = $1', [id]);
+    const ownerId = String(req.query.ownerId || req.body?.ownerId || '');
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const result = await pool.query('DELETE FROM lessons WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
     res.status(204).end();
   } catch (error) {
     res.status(500).json({ error: String(error) });
@@ -464,6 +474,45 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+app.get('/api/lessons/:id/share', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ownerId = String(req.query.ownerId || '');
+    if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
+    const lesson = await pool.query('SELECT id FROM lessons WHERE id = $1 AND owner_id = $2', [id, ownerId]);
+    if (lesson.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
+
+    const existing = await pool.query(
+      `SELECT token, role, access, expires_at FROM lesson_shares
+       WHERE lesson_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [id]
+    );
+    if (existing.rowCount > 0) {
+      const row = existing.rows[0];
+      return res.json({
+        token: row.token,
+        role: row.role,
+        access: row.access,
+        expiresAt: row.expires_at,
+      });
+    }
+
+    const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    const shareId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 30 * 86400000).toISOString();
+    await pool.query(
+      `INSERT INTO lesson_shares (id, lesson_id, token, role, access, expires_at)
+       VALUES ($1, $2, $3, 'viewer', 'anyone', $4)`,
+      [shareId, id, token, expiresAt]
+    );
+    res.status(201).json({ token, role: 'viewer', access: 'anyone', expiresAt });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 app.post('/api/lessons/:id/share', async (req, res) => {
   try {
     const { id } = req.params;
@@ -471,11 +520,30 @@ app.post('/api/lessons/:id/share', async (req, res) => {
     if (!ownerId) return res.status(400).json({ error: 'ownerId is required' });
     const lesson = await pool.query('SELECT id FROM lessons WHERE id = $1 AND owner_id = $2', [id, ownerId]);
     if (lesson.rowCount === 0) return res.status(404).json({ error: 'Lesson not found' });
-    const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-    const shareId = crypto.randomUUID();
+
+    const existing = await pool.query(
+      `SELECT id, token FROM lesson_shares
+       WHERE lesson_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [id]
+    );
+
     const expiresAt = expiresInDays
       ? new Date(Date.now() + Number(expiresInDays) * 86400000).toISOString()
       : null;
+
+    if (existing.rowCount > 0) {
+      const row = existing.rows[0];
+      await pool.query(
+        `UPDATE lesson_shares SET role = $2, access = $3, expires_at = $4 WHERE id = $1`,
+        [row.id, role, access, expiresAt]
+      );
+      return res.json({ token: row.token, role, access, expiresAt });
+    }
+
+    const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    const shareId = crypto.randomUUID();
     await pool.query(
       `INSERT INTO lesson_shares (id, lesson_id, token, role, access, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,

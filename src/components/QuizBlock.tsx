@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { translations } from '../i18n';
 
 type QuizBlockProps = {
   code: string;
@@ -24,6 +25,7 @@ function parseQuiz(code: string): QuizData | null {
 }
 
 export function QuizBlock({ code, lang = 'kh' }: QuizBlockProps) {
+  const t = translations[lang];
   const quiz = useMemo(() => parseQuiz(code), [code]);
   const [selected, setSelected] = useState<number | null>(null);
   const [checked, setChecked] = useState(false);
@@ -31,7 +33,7 @@ export function QuizBlock({ code, lang = 'kh' }: QuizBlockProps) {
   if (!quiz) {
     return (
       <pre className="my-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-        Invalid quiz JSON
+        {t.quizInvalid}
       </pre>
     );
   }
@@ -44,7 +46,7 @@ export function QuizBlock({ code, lang = 'kh' }: QuizBlockProps) {
       data-quiz-block
     >
       <p className="mb-3 text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-300">
-        {lang === 'kh' ? 'Quiz' : 'Quiz'}
+        {t.quizLabel}
       </p>
       <p className="mb-4 text-base font-semibold text-slate-900 dark:text-slate-100">{quiz.question}</p>
       <div className="space-y-2">

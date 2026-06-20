@@ -44,7 +44,12 @@ export function normalizeImportedMarkdown(raw: string): string {
   text = text.replace(/```(\w*)<br\s*\/?>/gi, '```$1\n');
   text = text.replace(/<br\s*\/?>\s*```/gi, '\n```');
 
-  return text.replace(/\n{3,}/g, '\n\n').trim();
+  // Normalize list markers and spacing
+  text = text.replace(/^\*\s+/gm, '- ');
+  text = text.replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2');
+  text = text.replace(/\n{3,}/g, '\n\n');
+
+  return text.trim();
 }
 
 /** True when text still shows raw Markdown markers (##, **, ```, list *). */

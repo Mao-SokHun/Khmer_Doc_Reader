@@ -1,4 +1,4 @@
-const CACHE = 'khmer-lesson-doc-v11';
+const CACHE = 'khmer-lesson-doc-v14';
 
 const PRECACHE = ['/', '/index.html', '/manifest.json', '/icon.svg'];
 

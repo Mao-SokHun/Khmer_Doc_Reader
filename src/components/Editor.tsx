@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { formatLessonWithAiHtml, isGeminiConfigured } from '../lib/aiFormatLesson';
 import { isHtmlContent, markdownToEditorHtml, normalizeImportedMarkdown, getLessonOutlineHeadings, assignHeadingIdsInDom, findDomHeadingForOutlineId, formatLessonContent, needsLessonFormatting } from '../lib/lessonContent';
 import {
   buildEditorCodeBlockHtml,
@@ -11,6 +12,7 @@ import {
   replaceEditorCodeBlock,
 } from '../lib/codeFormat';
 import { formatSourceCode } from '../lib/prettierFormat';
+import { plainTextToEditorHtml, sanitizePastedHtml, shouldPasteAsPlainText } from '../lib/pasteSanitize';
 import { SQL_LESSON_KH } from '../lib/markdownTemplates';
 import { highlightElement, scrollElementIntoMainView } from '../lib/scrollTo';
 import { 
@@ -258,8 +260,12 @@ export function Editor({
     formatCodeDone: isKh ? 'ធ្វើទម្រង់កូដរួចរាល់' : 'Code formatted',
     formatLesson: isKh ? 'រៀបចំមេរៀន' : 'Format lesson',
     formatLessonHint: isKh
-      ? 'បម្លែង Markdown (*, **, ```) → Heading, List, Code block ស្អាត'
-      : 'Convert Markdown (*, **, ```) → headings, lists, code blocks',
+      ? 'រៀបចំ layout — ប្រើ AI (Gemini) បើមាន API key'
+      : 'Clean layout — uses AI (Gemini) when API key is set',
+    formatLessonAiBusy: isKh ? 'AI កំពុងរៀបចំ...' : 'AI formatting...',
+    formatLessonAiFailed: isKh
+      ? 'AI format បរាជ័យ។ សូមពិនិត្យ GEMINI_API_KEY ឬសាកម្តងទៀត។'
+      : 'AI format failed. Check GEMINI_API_KEY or try again.',
     formatLessonNone: isKh ? 'មេរៀននេះរួចសណ្ដាប់ធ្នាប់រួចហើយ' : 'Lesson is already formatted',
     copyMarkdown: isKh ? 'ចម្លង Markdown' : 'Copy markdown',
     alignment: isKh ? 'តម្រឹម' : 'Alignment',
@@ -368,6 +374,8 @@ export function Editor({
   const highlightButtonRef = useRef<HTMLButtonElement>(null);
   const alignButtonRef = useRef<HTMLButtonElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
+  const pendingCommandRef = useRef<{ command: string; value?: string } | null>(null);
+  const showPreviewRef = useRef(false);
   const historyRef = useRef<string[]>([initialContent]);
   const historyIndexRef = useRef(0);
   const isHistoryNavigationRef = useRef(false);
@@ -427,12 +435,25 @@ export function Editor({
     });
     editor.querySelectorAll('[data-code-block-wrap="true"]').forEach((wrap) => {
       wrap.setAttribute('style', CODE_BLOCK_WRAP_STYLE);
+      wrap.removeAttribute('contenteditable');
       const label = wrap.firstElementChild as HTMLElement | null;
       if (label) {
         label.setAttribute('style', CODE_BLOCK_LABEL_STYLE);
         label.setAttribute('contenteditable', 'false');
       }
     });
+  };
+
+  const sanitizeEditorDom = (editor: HTMLDivElement) => {
+    editor.querySelectorAll('[contenteditable="false"]').forEach((node) => {
+      const el = node as HTMLElement;
+      const wrap = el.closest('[data-code-block-wrap="true"]');
+      if (wrap && wrap.firstElementChild === el) return;
+      el.removeAttribute('contenteditable');
+    });
+    if (!editor.innerHTML.trim() || editor.textContent?.trim() === '') {
+      editor.innerHTML = '<p><br></p>';
+    }
   };
   const codeLanguageOptions = [
     { key: 'ts', label: 'TypeScript', starter: 'export function example(): void {\n  // TODO: implement\n}' },
@@ -480,6 +501,7 @@ export function Editor({
       return;
     }
     contentLoadRef.current = { lessonId, reloadKey: contentReloadKey };
+    setShowPreview(false);
     setTitle(initialTitle);
     setContent(initialContent);
     setHistory([initialContent]);
@@ -489,9 +511,14 @@ export function Editor({
     if (editorRef.current) {
       const normalized = normalizeEditorContent(initialContent || '');
       editorRef.current.innerHTML = normalized;
+      sanitizeEditorDom(editorRef.current);
       decorateCodeBlocks(editorRef.current);
     }
   }, [lessonId, contentReloadKey, initialTitle, initialContent]);
+
+  useEffect(() => {
+    showPreviewRef.current = showPreview;
+  }, [showPreview]);
 
   useEffect(() => {
     setSelectedFontSize(fontSize);
@@ -743,7 +770,7 @@ export function Editor({
     return true;
   };
 
-  const runCommand = (command: string, value?: string) => {
+  const executeCommand = (command: string, value?: string) => {
     const editor = editorRef.current;
     if (!editor) return;
     restoreSelection();
@@ -753,6 +780,24 @@ export function Editor({
     refreshFormatState();
     saveCurrentSelection();
   };
+
+  const runCommand = (command: string, value?: string) => {
+    if (showPreviewRef.current) {
+      pendingCommandRef.current = { command, value };
+      setShowPreview(false);
+      return;
+    }
+    executeCommand(command, value);
+  };
+
+  useEffect(() => {
+    if (showPreview || !pendingCommandRef.current) return;
+    const pending = pendingCommandRef.current;
+    pendingCommandRef.current = null;
+    requestAnimationFrame(() => {
+      executeCommand(pending.command, pending.value);
+    });
+  }, [showPreview]);
 
   useEffect(() => {
     const onSelectionChange = () => refreshFormatState();
@@ -882,7 +927,12 @@ export function Editor({
     }
   };
 
+  const exitPreviewForEditing = () => {
+    if (showPreviewRef.current) setShowPreview(false);
+  };
+
   const insertMarkdown = (prefix: string, suffix: string = '') => {
+    exitPreviewForEditing();
     const editor = editorRef.current;
     if (!editor) return;
     editor.focus();
@@ -1161,6 +1211,15 @@ export function Editor({
     saveCurrentSelection();
   };
 
+  const insertSanitizedPaste = (html: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    document.execCommand('insertHTML', false, html);
+    decorateCodeBlocks(editor);
+    updateContent(editor.innerHTML);
+    saveCurrentSelection();
+  };
+
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -1168,22 +1227,37 @@ export function Editor({
     const selection = window.getSelection();
     if (isInsideCodeBlock(selection?.anchorNode ?? null, editor)) return;
 
-    const text = e.clipboardData.getData('text/plain').trim();
+    const text = e.clipboardData.getData('text/plain');
     const html = e.clipboardData.getData('text/html');
+    const trimmedText = text.trim();
 
     if (html && /<pre[\s>]/i.test(html)) {
       e.preventDefault();
       const tmp = document.createElement('div');
       tmp.innerHTML = html;
       const pre = tmp.querySelector('pre');
-      const codeText = (pre?.textContent || text).trim();
+      const codeText = (pre?.textContent || trimmedText).trim();
       if (codeText) insertCodeFromText(codeText);
       return;
     }
 
-    if (text && looksLikeCodeBlock(text)) {
+    if (trimmedText && looksLikeCodeBlock(trimmedText)) {
       e.preventDefault();
-      insertCodeFromText(text);
+      insertCodeFromText(trimmedText);
+      return;
+    }
+
+    e.preventDefault();
+    editor.focus();
+    restoreSelection();
+
+    if (html.trim() && !shouldPasteAsPlainText(html, text)) {
+      insertSanitizedPaste(sanitizePastedHtml(html));
+      return;
+    }
+
+    if (text) {
+      insertSanitizedPaste(plainTextToEditorHtml(text));
     }
   };
 
@@ -1254,23 +1328,27 @@ export function Editor({
     }
   };
 
-  const runFormatLesson = () => {
+  const runFormatLesson = async () => {
     const editor = editorRef.current;
     if (!editor || formatLessonBusy) return;
 
     const current = editor.innerHTML;
-    if (!needsLessonFormatting(current)) {
+    if (!isGeminiConfigured() && !needsLessonFormatting(current)) {
       alert(ui.formatLessonNone);
       return;
     }
 
     setFormatLessonBusy(true);
     try {
-      const formatted = formatLessonContent(current);
+      const formatted = await formatLessonWithAiHtml(current, lang);
       editor.innerHTML = formatted;
+      sanitizeEditorDom(editor);
       decorateCodeBlocks(editor);
       updateContent(formatted);
       saveCurrentSelection();
+    } catch (error) {
+      console.error('Format lesson failed:', error);
+      alert(ui.formatLessonAiFailed);
     } finally {
       setFormatLessonBusy(false);
     }
@@ -1632,7 +1710,7 @@ export function Editor({
         insertCodeFromText(text);
         return;
       }
-      runCommand('insertText', text);
+      insertSanitizedPaste(plainTextToEditorHtml(text));
     } catch (error) {
       console.error('Paste without formatting failed:', error);
       alert(ui.clipboardDenied);
@@ -1654,7 +1732,7 @@ export function Editor({
           insertCodeFromText(text);
           return;
         }
-        runCommand('insertText', text);
+        insertSanitizedPaste(plainTextToEditorHtml(text));
         return;
       } catch (error) {
         console.error('Paste failed:', error);
@@ -2144,6 +2222,8 @@ export function Editor({
           <div className="flex-1" />
           <div className="flex items-center gap-2">
             <button 
+              type="button"
+              data-preview-toggle
               onClick={() => setShowPreview(!showPreview)} 
               className={cn(
                 "hidden md:flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-bold transition-all border",
@@ -2184,6 +2264,11 @@ export function Editor({
       <div
         ref={toolbarRef}
         className="editor-toolbar-scroll sticky top-0 z-20 mx-3 my-1.5 min-w-0 shrink-0 bg-[#f9fbfd] dark:bg-slate-950"
+        onMouseDown={(e) => {
+          if (!(e.target as HTMLElement).closest('[data-preview-toggle]')) {
+            exitPreviewForEditing();
+          }
+        }}
       >
         <div className="editor-toolbar flex w-max flex-nowrap items-center gap-0.5 px-1 h-9 bg-[#edf2fa] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm dark:shadow-slate-950/30 whitespace-nowrap"
       >
@@ -2220,7 +2305,7 @@ export function Editor({
         <ToolbarButton icon={Printer} title={ui.print} onClick={() => window.print()} />
         <ToolbarButton
           title={ui.formatLessonHint}
-          onClick={runFormatLesson}
+          onClick={() => void runFormatLesson()}
         >
           {formatLessonBusy ? (
             <Loader2 size={16} className="animate-spin" />
@@ -2477,88 +2562,101 @@ export function Editor({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 lg:p-5 custom-scrollbar">
-        {showPreview ? (
-          <DocViewer content={content} fontSize={fontSize} />
-        ) : (
-          <div 
-            className={cn(
-              "editor-paper mx-auto w-full min-h-full rounded-sm overflow-hidden relative origin-top transition-transform duration-200 bg-white dark:bg-slate-900",
-              showPrintLayout
-                ? "shadow-xl shadow-slate-200/50 ring-1 ring-slate-200/60 dark:shadow-black/40 dark:ring-slate-700/60"
-                : "ring-0 shadow-none"
-            )}
-            style={{ 
-              maxWidth: `${pageWidth}px`,
-              transform: `scale(${zoom / 100})`,
-              marginBottom: `${(zoom / 100 - 1) * 100}%` 
+        <div
+          className={cn(
+            'editor-paper relative mx-auto w-full min-h-full rounded-sm overflow-hidden origin-top transition-transform duration-200 bg-white dark:bg-slate-900',
+            showPrintLayout
+              ? 'shadow-xl shadow-slate-200/50 ring-1 ring-slate-200/60 dark:shadow-black/40 dark:ring-slate-700/60'
+              : 'ring-0 shadow-none'
+          )}
+          style={{
+            maxWidth: `${pageWidth}px`,
+            transform: `scale(${zoom / 100})`,
+            marginBottom: `${(zoom / 100 - 1) * 100}%`,
+          }}
+        >
+          {showRuler && (
+            <div className="editor-ruler h-4 bg-slate-100 dark:bg-slate-800 flex items-end px-16 border-b border-slate-200 dark:border-slate-700 uppercase">
+              {[...Array(9)].map((_, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center">
+                  <div className="w-px h-1.5 bg-slate-400" />
+                  <span className="text-[8px] text-slate-400 font-bold mt-0.5">{i + 1}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            ref={editorRef}
+            contentEditable={!showPreview}
+            suppressContentEditableWarning
+            onPaste={handlePaste}
+            onInput={(e) => {
+              const editor = e.currentTarget as HTMLDivElement;
+              cleanupTypingStyleMarkers(editor);
+              decorateCodeBlocks(editor);
+              updateContent(editor.innerHTML);
             }}
-          >
-            {/* Simulation of a page ruler */}
-            {showRuler && (
-              <div className="editor-ruler h-4 bg-slate-100 dark:bg-slate-800 flex items-end px-16 border-b border-slate-200 dark:border-slate-700 uppercase">
-                {[...Array(9)].map((_, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center">
-                    <div className="w-px h-1.5 bg-slate-400" />
-                    <span className="text-[8px] text-slate-400 font-bold mt-0.5">{i + 1}</span>
-                  </div>
-                ))}
-              </div>
+            onKeyDown={(e) => {
+              if (e.key === 'Backspace' || e.key === 'Delete') {
+                const editor = editorRef.current;
+                if (editor) cleanupTypingStyleMarkers(editor);
+              }
+            }}
+            onKeyUp={() => {
+              refreshFormatState();
+              saveCurrentSelection();
+            }}
+            onMouseUp={() => {
+              refreshFormatState();
+              saveCurrentSelection();
+            }}
+            onFocus={() => {
+              refreshFormatState();
+              saveCurrentSelection();
+            }}
+            onSelect={saveCurrentSelection}
+            onBlur={saveCurrentSelection}
+            data-placeholder=""
+            className={cn(
+              'editor-surface khmer-doc-font w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 dark:text-slate-50 focus:outline-none border-none',
+              showPreview && 'pointer-events-none select-none opacity-0 absolute inset-0 h-px overflow-hidden'
             )}
-            
-            <div
-              ref={editorRef}
-              contentEditable
-              suppressContentEditableWarning
-              onPaste={handlePaste}
-              onInput={(e) => {
-                const editor = e.currentTarget as HTMLDivElement;
-                cleanupTypingStyleMarkers(editor);
-                decorateCodeBlocks(editor);
-                updateContent(editor.innerHTML);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Backspace' || e.key === 'Delete') {
-                  const editor = editorRef.current;
-                  if (editor) cleanupTypingStyleMarkers(editor);
-                }
-              }}
-              onKeyUp={() => { refreshFormatState(); saveCurrentSelection(); }}
-              onMouseUp={() => { refreshFormatState(); saveCurrentSelection(); }}
-              onFocus={() => { refreshFormatState(); saveCurrentSelection(); }}
-              onSelect={saveCurrentSelection}
-              onBlur={saveCurrentSelection}
-              data-placeholder=""
-              className="editor-surface khmer-doc-font w-full min-h-[1050px] p-12 leading-relaxed text-slate-700 dark:text-slate-50 focus:outline-none border-none"
-              spellCheck={spellCheckEnabled}
-              style={{
-                fontSize: `${fontSize + 5}px`,
-                fontFamily: fontFamily === 'Arial' ? '"Kantumruy Pro", "Inter", sans-serif' : fontFamily,
-                whiteSpace: 'pre-wrap',
-                minHeight: `${pageCount * PAGE_HEIGHT_PX + Math.max(0, pageCount - 1) * PAGE_GAP_PX}px`,
-                padding: `${pagePadding}px`,
-                paddingTop: `${pagePadding + PAGE_TOP_OFFSET_PX}px`,
-                paddingBottom: `${pagePadding + PAGE_BOTTOM_OFFSET_PX}px`,
-                lineHeight: lineSpacing,
-                overflowWrap: 'anywhere',
-                wordBreak: 'break-word',
-                backgroundImage: [
-                  showNonPrintingChars ? 'radial-gradient(circle at 1px 1px, rgba(100,116,139,0.35) 1px, transparent 0)' : '',
-                  showPrintLayout
-                    ? `repeating-linear-gradient(to bottom, transparent 0, transparent ${PAGE_HEIGHT_PX - 1}px, rgba(148,163,184,0.32) ${PAGE_HEIGHT_PX - 1}px, rgba(148,163,184,0.32) ${PAGE_HEIGHT_PX}px, rgba(241,245,249,0.92) ${PAGE_HEIGHT_PX}px, rgba(241,245,249,0.92) ${PAGE_STRIDE_PX}px)`
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join(', '),
-                backgroundSize: [
-                  showNonPrintingChars ? '12px 12px' : '',
-                  showPrintLayout ? `100% ${PAGE_STRIDE_PX}px` : '',
-                ]
-                  .filter(Boolean)
-                  .join(', '),
-              }}
-            />
-          </div>
-        )}
+            spellCheck={spellCheckEnabled}
+            style={{
+              fontSize: `${fontSize + 5}px`,
+              fontFamily: fontFamily === 'Arial' ? '"Kantumruy Pro", "Inter", sans-serif' : fontFamily,
+              whiteSpace: 'pre-wrap',
+              minHeight: `${pageCount * PAGE_HEIGHT_PX + Math.max(0, pageCount - 1) * PAGE_GAP_PX}px`,
+              padding: `${pagePadding}px`,
+              paddingTop: `${pagePadding + PAGE_TOP_OFFSET_PX}px`,
+              paddingBottom: `${pagePadding + PAGE_BOTTOM_OFFSET_PX}px`,
+              lineHeight: lineSpacing,
+              overflowWrap: 'break-word',
+              wordBreak: 'break-word',
+              backgroundImage: [
+                showNonPrintingChars ? 'radial-gradient(circle at 1px 1px, rgba(100,116,139,0.35) 1px, transparent 0)' : '',
+                showPrintLayout
+                  ? `repeating-linear-gradient(to bottom, transparent 0, transparent ${PAGE_HEIGHT_PX - 1}px, rgba(148,163,184,0.32) ${PAGE_HEIGHT_PX - 1}px, rgba(148,163,184,0.32) ${PAGE_HEIGHT_PX}px, rgba(241,245,249,0.92) ${PAGE_HEIGHT_PX}px, rgba(241,245,249,0.92) ${PAGE_STRIDE_PX}px)`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(', '),
+              backgroundSize: [
+                showNonPrintingChars ? '12px 12px' : '',
+                showPrintLayout ? `100% ${PAGE_STRIDE_PX}px` : '',
+              ]
+                .filter(Boolean)
+                .join(', '),
+            }}
+          />
+
+          {showPreview ? (
+            <div className="relative min-h-[1050px] bg-white dark:bg-slate-900">
+              <DocViewer content={content} fontSize={fontSize} previewMode />
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* Improved Image Modal */}

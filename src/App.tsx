@@ -33,6 +33,7 @@ import {
   MoreHorizontal,
   Trash2,
   Sparkles,
+  PanelLeft,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -41,6 +42,7 @@ import { PresentationMode } from './components/PresentationMode';
 import { TemplatePickerModal } from './components/TemplatePickerModal';
 import { NameInputModal } from './components/NameInputModal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { ToastStack, type ToastMessage } from './components/Toast';
 import { getOwnerId, getOwnerLabel } from './lib/auth';
 import { loadFontSize, saveFontSize } from './lib/preferences';
 import type { LessonTemplate } from './lib/templates';
@@ -61,6 +63,7 @@ import {
 } from './lib/pdfRenderFromPreview';
 import { jsPDF } from 'jspdf';
 import { formatLessonContent, needsLessonFormatting } from './lib/lessonContent';
+import { formatLessonWithAiHtml, isGeminiConfigured } from './lib/aiFormatLesson';
 
 export default function App() {
   type LessonSnapshot = {
@@ -130,8 +133,9 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [shareAccess, setShareAccess] = useState<'anyone' | 'restricted'>('anyone');
-  const [shareRole, setShareRole] = useState<'viewer' | 'commenter' | 'editor'>('viewer');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastIdRef = useRef(0);
   const [translateTarget, setTranslateTarget] = useState('en');
   const [showHeaderMoreMenu, setShowHeaderMoreMenu] = useState(false);
   const [nameModal, setNameModal] = useState<
@@ -156,6 +160,15 @@ export default function App() {
 
   const t = translations[lang];
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
+
+  const showToast = useCallback((text: string, type: ToastMessage['type'] = 'error') => {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, text, type }]);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
 
   const apiFetch = async <T,>(path: string, init?: RequestInit): Promise<T> => {
     const response = await fetchWithRetry(`${apiBaseUrl}${path}`, {
@@ -315,7 +328,7 @@ export default function App() {
       }
     };
     run();
-    const interval = window.setInterval(run, 4000);
+    const interval = window.setInterval(run, 15000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -330,20 +343,22 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const result = await apiFetch<{ token: string }>(`/api/lessons/${activeLessonId}/share`, {
-          method: 'POST',
-          body: JSON.stringify({ ownerId, role: shareRole, access: shareAccess }),
-        });
+        const result = await apiFetch<{ token: string }>(
+          `/api/lessons/${activeLessonId}/share?ownerId=${encodeURIComponent(ownerId)}`
+        );
         if (!cancelled) setShareToken(result.token);
       } catch (e) {
         console.error('Create share link failed:', e);
-        if (!cancelled) setShareToken(null);
+        if (!cancelled) {
+          setShareToken(null);
+          showToast(t.errorShareLink);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [showShareModal, activeLessonId, shareRole, shareAccess, ownerId]);
+  }, [showShareModal, activeLessonId, ownerId, showToast, t.errorShareLink]);
 
   const activeLesson = lessons.find(l => l.id === activeLessonId);
   const pdfPreviewContainerRef = useRef<HTMLDivElement>(null);
@@ -512,11 +527,13 @@ export default function App() {
       await loadLessonSnapshots();
     } catch (e) {
       console.error('Restore snapshot failed:', e);
+      showToast(t.errorRestoreSnapshot);
     } finally {
       setRestoringSnapshotId(null);
     }
   };
   const handleSelectLesson = (id: string, focusText?: string, headingId?: string) => {
+    setMobileSidebarOpen(false);
     setActiveLessonId(id);
     if (headingId) {
       setIsEditing(false);
@@ -658,6 +675,7 @@ export default function App() {
       );
     } catch (e) {
       console.error("Reorder error:", e);
+      showToast(t.errorReorder);
     }
   };
 
@@ -669,6 +687,7 @@ export default function App() {
         body: JSON.stringify({
           title,
           content,
+          ownerId,
           createSnapshot: true,
           triggerType: isAuto ? 'autosave' : 'manual',
         }),
@@ -688,17 +707,20 @@ export default function App() {
 
   const formatActiveLesson = async () => {
     if (!activeLesson || isFormattingLesson) return;
-    if (!needsLessonFormatting(activeLesson.content)) {
+    if (!isGeminiConfigured() && !needsLessonFormatting(activeLesson.content)) {
       alert(t.formatLessonNone);
       return;
     }
 
-    const formatted = formatLessonContent(activeLesson.content);
     setIsFormattingLesson(true);
     try {
+      const formatted = await formatLessonWithAiHtml(activeLesson.content, lang);
       await saveLesson(activeLesson.title, formatted, true);
       setEditorContentReloadKey((key) => key + 1);
-      alert(t.formatLessonDone);
+      alert(isGeminiConfigured() ? t.formatLessonAiDone : t.formatLessonDone);
+    } catch (e) {
+      console.error('Format lesson failed:', e);
+      alert(t.formatLessonAiFailed);
     } finally {
       setIsFormattingLesson(false);
       setShowHeaderMoreMenu(false);
@@ -752,7 +774,7 @@ ${activeLesson.content}`;
       );
     } catch (e) {
       console.error("Translation failed:", e);
-      alert(lang === 'kh' ? 'បកប្រែបរាជ័យ។ សូមសាកជាថ្មី ឬប្ដូរភាសាគោលដៅ។' : 'Failed to translate content. Try again or change target language.');
+      alert(t.errorTranslate);
     } finally {
       setIsTranslating(false);
     }
@@ -761,11 +783,12 @@ ${activeLesson.content}`;
   const deleteFolder = async (id: string) => {
     if (!confirm(t.deleteTabConfirm)) return;
     try {
-      await apiFetch<null>(`/api/folders/${id}`, { method: 'DELETE' });
+      await apiFetch<null>(`/api/folders/${id}?ownerId=${encodeURIComponent(ownerId)}`, { method: 'DELETE' });
       setFolders((prev) => prev.filter((folder) => folder.id !== id));
       setLessons((prev) => prev.filter((lesson) => lesson.folderId !== id));
     } catch (e) {
       console.error(e);
+      showToast(t.errorDeletingTab);
     }
   };
 
@@ -773,7 +796,7 @@ ${activeLesson.content}`;
     try {
       const next = await apiFetch<Folder>(`/api/folders/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, ownerId }),
       });
       setFolders((prev) => prev.map((folder) => (folder.id === id ? next : folder)));
     } catch (e) {
@@ -789,7 +812,7 @@ ${activeLesson.content}`;
 
   const deleteLesson = async (id: string) => {
     try {
-      await apiFetch<null>(`/api/lessons/${id}`, { method: 'DELETE' });
+      await apiFetch<null>(`/api/lessons/${id}?ownerId=${encodeURIComponent(ownerId)}`, { method: 'DELETE' });
       setLessons((prev) => prev.filter((lesson) => lesson.id !== id));
       if (activeLessonId === id) {
         setActiveLessonId(null);
@@ -798,6 +821,7 @@ ${activeLesson.content}`;
       setDeleteLessonTarget(null);
     } catch (e) {
       console.error(e);
+      showToast(t.errorDeletingLesson);
     }
   };
 
@@ -827,7 +851,7 @@ ${activeLesson.content}`;
       setIsEditing(false);
     } catch (e) {
       console.error(e);
-      alert(lang === 'kh' ? 'បរាជ័យក្នុងការចម្លងមេរៀន' : 'Failed to duplicate lesson');
+      alert(t.errorDuplicate);
     }
   };
 
@@ -894,6 +918,7 @@ ${activeLesson.content}`;
     setActiveHeadingId(null);
     setNavigateToText(null);
     setNavigateToHeadingId(null);
+    setMobileSidebarOpen(false);
   }, []);
 
   const shareLink = shareToken
@@ -959,7 +984,7 @@ ${activeLesson.content}`;
           href="/"
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
-          {lang === 'kh' ? 'ទៅទំព័រដើម' : 'Go to home'}
+          {t.goToHome}
         </a>
       </div>
     );
@@ -974,7 +999,7 @@ ${activeLesson.content}`;
             <BookOpen size={16} className="text-blue-500" />
             <span className="truncate font-bold text-slate-800 dark:text-slate-100">{sharedLesson.title}</span>
             <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-              {lang === 'kh' ? 'មើលប៉ុណ្ណោះ' : 'View only'}
+              {t.viewOnly}
             </span>
           </div>
           <ThemeToggle lightLabel={t.lightMode} darkLabel={t.darkMode} />
@@ -988,7 +1013,24 @@ ${activeLesson.content}`;
 
   return (
     <div className="flex h-screen w-full bg-[#f8f9fa] dark:bg-slate-950 font-sans overflow-hidden transition-colors">
-      <div className="relative h-full shrink-0" style={{ width: `${sidebarWidth}px` }}>
+      {mobileSidebarOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm md:hidden"
+          aria-label={t.closeMenu}
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      ) : null}
+
+      <div
+        className={cn(
+          'relative h-full shrink-0 transition-transform duration-200 md:translate-x-0',
+          mobileSidebarOpen
+            ? 'fixed inset-y-0 left-0 z-50 translate-x-0 shadow-2xl'
+            : 'fixed inset-y-0 left-0 z-50 -translate-x-full md:relative md:translate-x-0 md:shadow-none'
+        )}
+        style={{ width: `${sidebarWidth}px` }}
+      >
         <Sidebar
           folders={uiFolders}
           lessons={uiLessons}
@@ -1012,15 +1054,23 @@ ${activeLesson.content}`;
           aria-orientation="vertical"
           onMouseDown={() => setIsResizingSidebar(true)}
           className={cn(
-            "absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-blue-200/60 transition-colors",
+            "absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-blue-200/60 transition-colors hidden md:block",
             isResizingSidebar && "bg-blue-300/70"
           )}
-          title={lang === 'kh' ? 'ទាញដើម្បីប្ដូរទំហំ Sidebar' : 'Drag to resize sidebar'}
+          title={t.resizeSidebar}
         />
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 lg:px-5 z-10 transition-colors">
+          <button
+            type="button"
+            onClick={() => setMobileSidebarOpen((open) => !open)}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 md:hidden"
+            aria-label={mobileSidebarOpen ? t.closeMenu : t.openMenu}
+          >
+            <PanelLeft size={20} />
+          </button>
           <div className="min-w-0 flex-1 overflow-hidden pr-2">
             {activeLesson ? (
               <div className="flex min-w-0 items-center gap-2">
@@ -1057,6 +1107,7 @@ ${activeLesson.content}`;
               onClick={() => setShowSearchModal(true)}
               className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title={`${t.search} (Ctrl+K)`}
+              aria-label={t.search}
             >
               <Search size={20} />
             </button>
@@ -1067,6 +1118,7 @@ ${activeLesson.content}`;
               <button
                 type="button"
                 onClick={() => setLang('kh')}
+                aria-pressed={lang === 'kh'}
                 className={cn(
                   'min-w-[2.5rem] px-2.5 py-1.5 text-sm font-bold rounded-md transition-all',
                   lang === 'kh'
@@ -1079,6 +1131,7 @@ ${activeLesson.content}`;
               <button
                 type="button"
                 onClick={() => setLang('en')}
+                aria-pressed={lang === 'en'}
                 className={cn(
                   'min-w-[2.5rem] px-2.5 py-1.5 text-sm font-bold rounded-md transition-all',
                   lang === 'en'
@@ -1100,6 +1153,7 @@ ${activeLesson.content}`;
                   disabled={isExporting}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
                   title={t.downloadPdf}
+                  aria-label={t.downloadPdf}
                 >
                   {isExporting ? (
                     <Loader2 size={20} className="animate-spin text-blue-500" />
@@ -1142,13 +1196,14 @@ ${activeLesson.content}`;
                       showHeaderMoreMenu && 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
                     )}
                     title={lang === 'kh' ? 'ផ្សេងទៀត' : 'More'}
+                    aria-label={t.moreActions}
                   >
                     <MoreHorizontal size={20} />
                   </button>
                   {showHeaderMoreMenu && (
                     <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1 shadow-xl z-40">
                       <p className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
-                        {lang === 'kh' ? 'ផ្សេងទៀត' : 'More actions'}
+                        {t.moreActions}
                       </p>
                       <button
                         type="button"
@@ -1330,25 +1385,25 @@ ${activeLesson.content}`;
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="bg-white rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden"
+                className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 dark:border-slate-800"
               >
-                <div className="p-8 border-b border-slate-100 flex justify-between items-center">
-                   <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-                      <div className="p-2 bg-blue-100 rounded-xl text-blue-600">
+                <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                   <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 flex items-center gap-3">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-950 rounded-xl text-blue-600 dark:text-blue-400">
                         <Lock size={20} />
                       </div>
                       {t.sharing}
                    </h2>
-                   <button onClick={() => setShowShareModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                   <button onClick={() => setShowShareModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400">
                       <X size={20} />
                    </button>
                 </div>
                 <div className="p-8 space-y-6">
                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-slate-500">{lang === 'kh' ? 'តំណភ្ជាប់ទៅកាន់ឯកសារនេះ៖' : 'Link to this document:'}</p>
+                      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{t.shareLinkLabel}</p>
                       <div className="flex gap-2">
-                         <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600 font-medium truncate">
-                           {shareLink || (lang === 'kh' ? 'កំពុងបង្កើតតំណ...' : 'Generating link...')}
+                         <div className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-600 dark:text-slate-300 font-medium truncate">
+                           {shareLink || t.shareGenerating}
                          </div>
                          <button 
                           onClick={async () => {
@@ -1356,10 +1411,12 @@ ${activeLesson.content}`;
                             try {
                               await navigator.clipboard.writeText(shareLink);
                               setLinkCopied(true);
+                              showToast(t.linkCopied, 'success');
                               window.setTimeout(() => setLinkCopied(false), 2000);
                             } catch (error) {
                               console.error('Failed to copy share link:', error);
                               setLinkCopied(false);
+                              showToast(t.errorCopyLink);
                             }
                            }}
                            className="flex items-center gap-2 bg-blue-600 text-white px-6 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
@@ -1371,43 +1428,9 @@ ${activeLesson.content}`;
                       </div>
                    </div>
                    
-                   <div className="pt-4 border-t border-slate-50 grid grid-cols-1 gap-3">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <label className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-600">
-                          <span className="block text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
-                            {lang === 'kh' ? 'សិទ្ធិចូលមើល' : 'Access'}
-                          </span>
-                          <div className="relative">
-                            <select
-                              value={shareAccess}
-                              onChange={(e) => setShareAccess(e.target.value as 'anyone' | 'restricted')}
-                              className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-9 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            >
-                              <option value="anyone">{lang === 'kh' ? 'នរណាក៏បានដែលមានតំណ' : 'Anyone with the link'}</option>
-                              <option value="restricted">{lang === 'kh' ? 'កំណត់ចំពោះអ្នកអនុញ្ញាត' : 'Restricted'}</option>
-                            </select>
-                            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          </div>
-                        </label>
-                        <label className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 text-sm text-slate-600">
-                          <span className="block text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
-                            {lang === 'kh' ? 'តួនាទី' : 'Role'}
-                          </span>
-                          <div className="relative">
-                            <select
-                              value={shareRole}
-                              onChange={(e) => setShareRole(e.target.value as 'viewer' | 'commenter' | 'editor')}
-                              className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-9 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                            >
-                              <option value="viewer">{lang === 'kh' ? 'មើលប៉ុណ្ណោះ' : 'Viewer'}</option>
-                              <option value="commenter">{lang === 'kh' ? 'មតិយោបល់' : 'Commenter'}</option>
-                              <option value="editor">{lang === 'kh' ? 'កែសម្រួល' : 'Editor'}</option>
-                            </select>
-                            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          </div>
-                        </label>
-                      </div>
-                   </div>
+                   <p className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700 px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
+                     {t.shareViewOnlyNote}
+                   </p>
                 </div>
               </motion.div>
             </div>
@@ -1436,11 +1459,11 @@ ${activeLesson.content}`;
                    <div className="space-y-4">
                       {loadingSnapshots ? (
                         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                          {lang === 'kh' ? 'កំពុងទាញយកប្រវត្តិកំណែ...' : 'Loading version history...'}
+                          {t.loadingVersions}
                         </div>
                       ) : lessonSnapshots.length === 0 ? (
                         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                          {lang === 'kh' ? 'មិនទាន់មាន snapshot ទេ' : 'No snapshots yet'}
+                          {t.noSnapshots}
                         </div>
                       ) : (
                         lessonSnapshots.map((v, i) => {
@@ -1457,19 +1480,25 @@ ${activeLesson.content}`;
                                 </div>
                                 <div>
                                   <p className="text-sm font-bold text-slate-800">{new Date(v.createdAt).toLocaleString()}</p>
-                                  <p className="text-xs text-slate-500">{v.triggerType === 'autosave' ? 'Autosave' : v.triggerType === 'restore' ? 'Restore' : 'Manual save'}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {v.triggerType === 'autosave'
+                                      ? t.snapshotAutosave
+                                      : v.triggerType === 'restore'
+                                        ? t.snapshotRestore
+                                        : t.snapshotManual}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 {isCurrent ? (
-                                  <span className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Current</span>
+                                  <span className="text-[10px] font-black uppercase text-blue-600 tracking-widest">{t.snapshotCurrent}</span>
                                 ) : (
                                   <button
                                     onClick={() => restoreSnapshot(v.id)}
                                     disabled={!!restoringSnapshotId}
                                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                                   >
-                                    {isRestoring ? (lang === 'kh' ? 'កំពុងស្តារ...' : 'Restoring...') : (lang === 'kh' ? 'ស្តារឡើងវិញ' : 'Restore')}
+                                    {isRestoring ? t.restoring : t.restore}
                                   </button>
                                 )}
                               </div>
@@ -1774,6 +1803,8 @@ ${activeLesson.content}`;
             onClose={() => setShowPresentation(false)}
           />
         ) : null}
+
+        <ToastStack messages={toasts} onDismiss={dismissToast} />
       </div>
     </div>
   );
