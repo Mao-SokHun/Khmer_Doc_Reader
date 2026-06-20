@@ -10,7 +10,9 @@ export const translations = {
   kh: {
     documentTabs: 'ផ្ទាំងឯកសារ',
     createTab: 'បង្កើតផ្ទាំងថ្មី',
-    addLesson: 'បន្ថែមមេរៀនថ្មី...',
+    addLesson: 'បង្កើតមេរៀនថ្មី',
+    createLessonTitle: 'បង្កើតមេរៀនថ្មី',
+    enterLessonName: 'ឈ្មោះមេរៀន',
     edit: 'កែសម្រួល',
     downloadPdf: 'ទាញយក PDF',
     preview: 'មើលមុន',
@@ -94,7 +96,9 @@ export const translations = {
   en: {
     documentTabs: 'Document tabs',
     createTab: 'Create New Tab',
-    addLesson: 'Add New Lesson...',
+    addLesson: 'Create new lesson',
+    createLessonTitle: 'Create new lesson',
+    enterLessonName: 'Lesson name',
     edit: 'Edit',
     downloadPdf: 'Download PDF',
     preview: 'Preview',

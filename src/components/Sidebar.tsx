@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Plus, GripVertical, Edit2, BookOpenText, FileText, Trash2, Star } from 'lucide-react';
+import { Plus, GripVertical, Edit2, FileText, Trash2, Star } from 'lucide-react';
 import { Folder, Lesson } from '../types';
 import { cn } from '../lib/utils';
 import { getSidebarOutlineHeadings } from '../lib/lessonContent';
@@ -338,10 +338,9 @@ export function Sidebar({
                   {folderLessons.length === 0 && (
                     <button 
                       onClick={() => onAddLesson(folder.id)}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-400 dark:text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-white/70 dark:hover:bg-slate-800/70 rounded-lg transition-colors italic"
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-white/70 dark:hover:bg-slate-800/70 rounded-lg transition-colors"
                     >
-                      <BookOpenText size={12} />
-                      <Plus size={12} />
+                      <Plus size={16} />
                       {t.addLesson}
                     </button>
                   )}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Folder, Lesson, SharedLessonPayload } from './types';
 import { getApiBaseUrl, formatApiError, fetchWithRetry } from './lib/apiBaseUrl';
 import { PLATFORM_GUIDE_VERSION } from './lib/platformGuide';
-import { cn } from './lib/utils';
+import { cn, toKhmerDigits } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
 import { HomePage } from './components/HomePage';
 import { DocViewer } from './components/DocViewer';
@@ -134,8 +134,10 @@ export default function App() {
   const [nameModal, setNameModal] = useState<
     | { kind: 'createTab' }
     | { kind: 'renameTab'; folderId: string; currentName: string }
+    | { kind: 'createLesson'; folderId: string }
     | null
   >(null);
+  const [pendingLessonTitle, setPendingLessonTitle] = useState<string | null>(null);
   const [deleteLessonTarget, setDeleteLessonTarget] = useState<{ id: string; title: string } | null>(null);
   const [lessonSnapshots, setLessonSnapshots] = useState<LessonSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
@@ -601,6 +603,10 @@ export default function App() {
         console.error(e);
         alert(t.errorCreatingTab);
       }
+    } else if (nameModal.kind === 'createLesson') {
+      setPendingLessonTitle(name);
+      setTemplateFolderId(nameModal.folderId);
+      setShowTemplateModal(true);
     } else if (name !== nameModal.currentName) {
       await updateFolder(nameModal.folderId, name);
     }
@@ -796,16 +802,16 @@ ${activeLesson.content}`;
   };
 
   const promptAddLesson = (folderId: string) => {
-    setTemplateFolderId(folderId);
-    setShowTemplateModal(true);
+    setNameModal({ kind: 'createLesson', folderId });
   };
 
   const createLessonFromTemplate = async (template: LessonTemplate) => {
     if (!templateFolderId) return;
     const folderId = templateFolderId;
+    const title = pendingLessonTitle || (lang === 'kh' ? template.titleKh : template.titleEn);
     setTemplateFolderId(null);
+    setPendingLessonTitle(null);
     try {
-      const title = lang === 'kh' ? template.titleKh : template.titleEn;
       const newLesson = await apiFetch<Lesson>('/api/lessons', {
         method: 'POST',
         body: JSON.stringify({
@@ -1643,6 +1649,7 @@ ${activeLesson.content}`;
           onClose={() => {
             setShowTemplateModal(false);
             setTemplateFolderId(null);
+            setPendingLessonTitle(null);
           }}
           lang={lang}
           onPick={createLessonFromTemplate}
@@ -1650,14 +1657,24 @@ ${activeLesson.content}`;
 
         <NameInputModal
           open={nameModal !== null}
-          title={nameModal?.kind === 'renameTab' ? t.renameTabTitle : t.createTabTitle}
-          label={t.enterTabName}
+          title={
+            nameModal?.kind === 'renameTab'
+              ? t.renameTabTitle
+              : nameModal?.kind === 'createLesson'
+                ? t.createLessonTitle
+                : t.createTabTitle
+          }
+          label={
+            nameModal?.kind === 'createLesson' ? t.enterLessonName : t.enterTabName
+          }
           defaultValue={
             nameModal?.kind === 'renameTab'
               ? nameModal.currentName
-              : lang === 'kh'
-                ? `ផ្ទាំង ${folders.length + 1}`
-                : `Tab ${folders.length + 1}`
+              : nameModal?.kind === 'createLesson'
+                ? t.newLessonTitle
+                : lang === 'kh'
+                  ? `ផ្ទាំង ${toKhmerDigits(folders.length + 1)}`
+                  : `Tab ${folders.length + 1}`
           }
           confirmLabel={t.confirm}
           cancelLabel={t.cancel}
