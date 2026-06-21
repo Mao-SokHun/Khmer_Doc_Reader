@@ -65,6 +65,49 @@ $env:DATABASE_URL='postgresql://...'; $env:API_PORT='3001'; $env:VITE_API_BASE_U
 
 Tables are created automatically on first API start (`initDb` in `server.js`).
 
+## 2c. Vercel (khmer-lesson-doc.vercel.app)
+
+AI features (translate, format, generate lesson/image) need **`GEMINI_API_KEY`** on the server — never in the frontend.
+
+### Get a key
+
+1. Open [Google AI Studio → API keys](https://aistudio.google.com/apikey)
+2. Create key → copy (starts with `AIza...`)
+3. Paste **without extra spaces** (avoid invisible BOM from Word/Notepad)
+
+### Option A — Vercel Dashboard (recommended)
+
+1. [Vercel Dashboard](https://vercel.com) → your project → **Settings → Environment Variables**
+2. Add:
+   - **Name:** `GEMINI_API_KEY`
+   - **Value:** your key
+   - **Environments:** Production, Preview, Development
+3. **Redeploy** (Deployments → ⋯ → Redeploy) — env vars apply only after redeploy
+
+Check: open `https://YOUR_APP.vercel.app/api/ai/status` → should show `{"configured":true}`.
+
+### Option B — Sync from local `.env` (CLI)
+
+Local `.env` already has the key? After login:
+
+```powershell
+npx vercel login
+npx vercel link
+.\scripts\sync-gemini-vercel.ps1
+npx vercel --prod
+```
+
+### Optional env vars (Vercel)
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `GEMINI_API_KEY` | Gemini AI (format / translate / generate) |
+| `VITE_GOOGLE_CLIENT_ID` | Google Sign-In (client) |
+| `GOOGLE_CLIENT_ID` | Google Sign-In (server verify) |
+
+`VITE_API_BASE_URL` should stay **empty** on Vercel (same-origin `/api`).
+
 ## 3. Deploy from your machine
 
 ```bash

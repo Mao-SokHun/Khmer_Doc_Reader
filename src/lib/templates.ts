@@ -24,11 +24,25 @@ export const TEMPLATE_CATEGORIES: Array<{
   labelKh: string;
   labelEn: string;
 }> = [
-  { id: 'code', labelKh: 'កូដ & Programming', labelEn: 'Code & Programming' },
   { id: 'document', labelKh: 'ឯកសារ', labelEn: 'Documents' },
   { id: 'lesson', labelKh: 'មេរៀន', labelEn: 'Lessons' },
   { id: 'general', labelKh: 'ទូទៅ', labelEn: 'General' },
+  { id: 'code', labelKh: 'កូដ & Programming', labelEn: 'Code & Programming' },
 ];
+
+/** Category order in the template picker (programming last). */
+export const TEMPLATE_PICKER_CATEGORY_ORDER: TemplateCategory[] = [
+  'document',
+  'lesson',
+  'general',
+  'code',
+];
+
+export type TemplatePickPayload = {
+  template: LessonTemplate;
+  title: string;
+  content: string;
+};
 
 const STATIC_TEMPLATES: LessonTemplate[] = [
   {

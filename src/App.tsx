@@ -43,7 +43,7 @@ import { NameInputModal } from './components/NameInputModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { ToastStack, type ToastMessage } from './components/Toast';
 import { loadFontSize, saveFontSize } from './lib/preferences';
-import type { LessonTemplate } from './lib/templates';
+import type { TemplatePickPayload } from './lib/templates';
 import { getTemplateContent } from './lib/templates';
 import type { SearchResult } from './lib/search';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -893,6 +893,13 @@ export default function App() {
 
   const handleTranslateContent = async (targetCode?: string) => {
     if (!activeLesson || isTranslating) return;
+
+    const configured = await isGeminiConfigured();
+    if (!configured) {
+      showToast(t.aiNotConfigured, 'info');
+      return;
+    }
+
     setIsTranslating(true);
     try {
       const resolvedCode = targetCode || translateTarget;
@@ -920,9 +927,10 @@ export default function App() {
         prev.map((lesson) => (lesson.id === activeLesson.id ? { ...lesson, content: translatedHtml } : lesson))
       );
       setEditorContentReloadKey((k) => k + 1);
+      showToast(t.translateDone, 'success');
     } catch (e) {
       console.error("Translation failed:", e);
-      alert(t.errorTranslate);
+      showToast(t.errorTranslate);
     } finally {
       setIsTranslating(false);
     }
@@ -1022,10 +1030,17 @@ export default function App() {
     setNameModal({ kind: 'createLesson', folderId });
   };
 
-  const createLessonFromTemplate = async (template: LessonTemplate) => {
+  const createLessonFromTemplate = async ({
+    template,
+    title: templateTitle,
+    content: templateContent,
+  }: TemplatePickPayload) => {
     if (!templateFolderId) return;
     const folderId = templateFolderId;
-    const title = pendingLessonTitle || (lang === 'kh' ? template.titleKh : template.titleEn);
+    const title =
+      pendingLessonTitle ||
+      templateTitle ||
+      (lang === 'kh' ? template.titleKh : template.titleEn);
     setTemplateFolderId(null);
     setPendingLessonTitle(null);
     try {
@@ -1034,7 +1049,7 @@ export default function App() {
         body: JSON.stringify({
           folderId,
           title,
-          content: getTemplateContent(template, lang),
+          content: templateContent || getTemplateContent(template, lang),
           ownerId,
           order: lessons.filter((l) => l.folderId === folderId).length,
         }),
