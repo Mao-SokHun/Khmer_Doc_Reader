@@ -247,6 +247,10 @@ export default function App() {
   };
 
   const loadWorkspace = async (ownerId: string, currentLang: Language) => {
+    if (!ownerId?.trim()) {
+      throw new Error(currentLang === 'kh' ? 'ownerId មិនមាន — refresh ទំព័រ' : 'Missing workspace id — refresh the page');
+    }
+
     const versionKey = 'khmer-doc-guide-version';
     let guideLessonId: string | null = null;
 
@@ -270,15 +274,18 @@ export default function App() {
           body: JSON.stringify({
             title: tr.guideTitle,
             content: tr.guideContent,
+            ownerId,
           }),
         });
         nextLessons = lessonList.map((l) => (l.id === updated.id ? updated : l));
       } else if (folderList.length === 0) {
         guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+        localStorage.setItem(versionKey, PLATFORM_GUIDE_VERSION);
         await loadWorkspace(ownerId, currentLang);
         return;
       } else {
         guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+        localStorage.setItem(versionKey, PLATFORM_GUIDE_VERSION);
         await loadWorkspace(ownerId, currentLang);
         return;
       }
@@ -290,7 +297,8 @@ export default function App() {
     setLessons(nextLessons);
 
     if (folderList.length === 0) {
-      await seedPlatformGuide(ownerId, currentLang);
+      guideLessonId = await seedPlatformGuide(ownerId, currentLang);
+      localStorage.setItem(versionKey, PLATFORM_GUIDE_VERSION);
       await loadWorkspace(ownerId, currentLang);
       return;
     }

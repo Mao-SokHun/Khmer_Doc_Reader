@@ -22,7 +22,7 @@ function createLocalOwnerId(): string {
 
 export function getOwnerId(): string {
   try {
-    let id = localStorage.getItem(OWNER_KEY);
+    let id = localStorage.getItem(OWNER_KEY)?.trim();
     if (!id) {
       id = createLocalOwnerId();
       localStorage.setItem(OWNER_KEY, id);
