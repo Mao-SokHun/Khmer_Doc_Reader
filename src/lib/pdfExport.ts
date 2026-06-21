@@ -2,7 +2,7 @@ import { prepareExportDomForPdfWysiwyg, type ExportLang } from './lessonContent'
 
 /** Shared document font — matches PDF export preview. */
 export const KHMER_DOCUMENT_FONT_STACK =
-  '"Kantumruy Pro", "Inter", "Noto Sans Khmer", system-ui, sans-serif';
+  '"Kantumruy Pro", "Noto Sans Khmer", "Noto Sans JP", "Noto Sans SC", "Noto Sans KR", "Noto Sans Thai", "Noto Sans Arabic", "Noto Sans Devanagari", "Inter", system-ui, sans-serif';
 
 /** Reserved footer band on each PDF page (px in jsPDF page coordinates). */
 export const PDF_FOOTER_BAND_PX = 52;
@@ -487,7 +487,7 @@ export function buildPdfDocumentHtmlFromPreview(
   <meta charset="utf-8" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Kantumruy+Pro:ital,wght@0,300;0,400;0,700;1,400&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Kantumruy+Pro:ital,wght@0,300;0,400;0,700;1,400&family=Noto+Sans+Arabic:wght@400;700&family=Noto+Sans+Devanagari:wght@400;700&family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+Khmer:wght@400;700&family=Noto+Sans+KR:wght@400;700&family=Noto+Sans+SC:wght@400;700&family=Noto+Sans+Thai:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
   <style>${fontStyles}${shellStyles}${contentStyles}</style>
 </head>

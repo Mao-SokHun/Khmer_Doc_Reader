@@ -1002,7 +1002,12 @@ export type MarkdownTemplateId =
   | 'meeting'
   | import('./codeLessonTemplates').CodeTemplateId;
 
-const TEMPLATE_BY_LANG: Record<MarkdownTemplateId, { kh: string; en: string }> = {
+type StaticMarkdownTemplateId = Exclude<
+  MarkdownTemplateId,
+  import('./codeLessonTemplates').CodeTemplateId
+>;
+
+const TEMPLATE_BY_LANG: Record<StaticMarkdownTemplateId, { kh: string; en: string }> = {
   blank: { kh: BLANK_LESSON_KH, en: BLANK_LESSON_EN },
   'code-doc': { kh: CODE_DOC_KH, en: CODE_DOC_EN },
   sql: { kh: SQL_LESSON_KH, en: SQL_LESSON_EN },
@@ -1020,5 +1025,5 @@ export function getMarkdownTemplate(id: MarkdownTemplateId, lang: 'kh' | 'en'): 
     const def = getCodeTemplateDef(id);
     if (def) return buildCodeLessonMarkdown(def, lang);
   }
-  return TEMPLATE_BY_LANG[id as keyof typeof TEMPLATE_BY_LANG][lang];
+  return TEMPLATE_BY_LANG[id as StaticMarkdownTemplateId][lang];
 }

@@ -64,6 +64,12 @@ import {
 import { jsPDF } from 'jspdf';
 import { formatLessonContent, needsLessonFormatting, markdownToEditorHtml } from './lib/lessonContent';
 import { formatLessonWithAiHtml, generateLessonHtml, isGeminiConfigured, translateLessonMarkdown } from './lib/aiFormatLesson';
+import {
+  filterTranslateLanguages,
+  getTranslateLanguageLabel,
+  resolveTranslateApiName,
+  TRANSLATE_LANGUAGE_PINNED,
+} from './lib/translateLanguages';
 import { GoogleSignInButton } from './components/GoogleSignInButton';
 import { GenerateLessonModal } from './components/GenerateLessonModal';
 import { ClassroomPage } from './components/ClassroomPage';
@@ -165,6 +171,7 @@ export default function App() {
   const backupImportRef = useRef<HTMLInputElement>(null);
   const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0);
   const [translateTarget, setTranslateTarget] = useState('en');
+  const [translateSearch, setTranslateSearch] = useState('');
   const [showHeaderMoreMenu, setShowHeaderMoreMenu] = useState(false);
   const [nameModal, setNameModal] = useState<
     | { kind: 'createTab' }
@@ -649,15 +656,11 @@ export default function App() {
   };
   const uiFolders = folders.map((folder) => ({ ...folder, name: localizeSeedLabel(folder.name) }));
   const uiLessons = filteredLessons.map((lesson) => ({ ...lesson, title: localizeSeedLabel(lesson.title) }));
-  const translateLanguageOptions = [
-    { code: 'en', label: 'English' },
-    { code: 'kh', label: 'Khmer' },
-    { code: 'vi', label: 'Vietnamese' },
-    { code: 'zh', label: 'Chinese' },
-    { code: 'ja', label: 'Japanese' },
-    { code: 'ko', label: 'Korean' },
-    { code: 'fr', label: 'French' },
-  ];
+  const translateLanguageOptions = useMemo(
+    () => filterTranslateLanguages(translateSearch, lang),
+    [translateSearch, lang]
+  );
+  const pinnedTranslateCodes = useMemo(() => new Set<string>(TRANSLATE_LANGUAGE_PINNED), []);
 
   const loadLessonSnapshots = async () => {
     if (!activeLessonId) {
@@ -894,7 +897,7 @@ export default function App() {
     }
   };
 
-  const handleTranslateContent = async (targetCode?: string) => {
+  const handleTranslateContent = async (targetCode?: string, customTargetLang?: string) => {
     if (!activeLesson || isTranslating) return;
 
     const configured = await isGeminiConfigured();
@@ -907,16 +910,8 @@ export default function App() {
     showToast(t.translating, 'info');
     try {
       const resolvedCode = targetCode || translateTarget;
-      const languageByCode: Record<string, string> = {
-        en: 'English',
-        kh: 'Khmer',
-        vi: 'Vietnamese',
-        zh: 'Chinese',
-        ja: 'Japanese',
-        ko: 'Korean',
-        fr: 'French',
-      };
-      const targetLang = languageByCode[resolvedCode] || 'English';
+      const targetLang =
+        customTargetLang?.trim() || resolveTranslateApiName(resolvedCode) || 'English';
       const translatedMd = await translateLessonMarkdown(activeLesson.content, targetLang);
       const translatedHtml = markdownToEditorHtml(translatedMd);
 
@@ -1148,6 +1143,10 @@ export default function App() {
       window.removeEventListener('scroll', updateMenuPosition, true);
       document.removeEventListener('mousedown', onMouseDown);
     };
+  }, [showHeaderMoreMenu]);
+
+  useEffect(() => {
+    if (!showHeaderMoreMenu) setTranslateSearch('');
   }, [showHeaderMoreMenu]);
 
   useEffect(() => {
@@ -1478,7 +1477,7 @@ export default function App() {
                           right: headerMoreMenuPos.right,
                           maxHeight: headerMoreMenuPos.maxHeight,
                         }}
-                        className="fixed z-[200] w-56 overflow-y-auto overscroll-contain custom-scrollbar rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-800"
+                        className="fixed z-[200] w-64 overflow-y-auto overscroll-contain custom-scrollbar rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-800"
                       >
                       <p className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
                         {t.moreActions}
@@ -1586,31 +1585,77 @@ export default function App() {
                       <p className="px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-400">
                         {t.translate}
                       </p>
-                      {translateLanguageOptions.map((option) => (
+                      <div className="px-2 pb-1">
+                        <input
+                          type="search"
+                          value={translateSearch}
+                          onChange={(e) => setTranslateSearch(e.target.value)}
+                          placeholder={t.translateSearchPlaceholder}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-800 outline-none ring-blue-500/0 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      {translateLanguageOptions.length === 0 && translateSearch.trim() ? (
                         <button
-                          key={option.code}
                           type="button"
                           disabled={isTranslating}
                           onClick={async () => {
-                            setTranslateTarget(option.code);
                             setShowHeaderMoreMenu(false);
-                            await handleTranslateContent(option.code);
+                            await handleTranslateContent(undefined, translateSearch.trim());
                           }}
-                          className={cn(
-                            'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50',
-                            translateTarget === option.code
-                              ? 'font-semibold text-blue-600 dark:text-blue-300'
-                              : 'text-slate-700 dark:text-slate-200'
-                          )}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-blue-600 hover:bg-slate-50 dark:text-blue-300 dark:hover:bg-slate-700 disabled:opacity-50"
                         >
-                          {isTranslating && translateTarget === option.code ? (
+                          {isTranslating ? (
                             <Loader2 size={12} className="animate-spin" />
                           ) : (
-                            <Languages size={12} className="text-blue-500" />
+                            <Languages size={12} />
                           )}
-                          {option.label}
+                          {lang === 'kh'
+                            ? `បកប្រែទៅ «${translateSearch.trim()}»`
+                            : `Translate to “${translateSearch.trim()}”`}
                         </button>
-                      ))}
+                      ) : translateLanguageOptions.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                          {t.translateNoResults}
+                        </p>
+                      ) : null}
+                      {translateLanguageOptions.map((option, index) => {
+                        const showDivider =
+                          !translateSearch.trim() &&
+                          index > 0 &&
+                          pinnedTranslateCodes.has(translateLanguageOptions[index - 1]?.code ?? '') &&
+                          !pinnedTranslateCodes.has(option.code);
+
+                        return (
+                          <div key={option.code}>
+                            {showDivider ? (
+                              <div className="my-1 border-t border-slate-100 dark:border-slate-700" />
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={isTranslating}
+                              onClick={async () => {
+                                setTranslateTarget(option.code);
+                                setShowHeaderMoreMenu(false);
+                                await handleTranslateContent(option.code);
+                              }}
+                              className={cn(
+                                'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50',
+                                translateTarget === option.code
+                                  ? 'font-semibold text-blue-600 dark:text-blue-300'
+                                  : 'text-slate-700 dark:text-slate-200'
+                              )}
+                            >
+                              {isTranslating && translateTarget === option.code ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <Languages size={12} className="text-blue-500" />
+                              )}
+                              {getTranslateLanguageLabel(option, lang)}
+                            </button>
+                          </div>
+                        );
+                      })}
                       </div>,
                       document.body
                     )}
