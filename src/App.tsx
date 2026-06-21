@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Folder, Lesson, SharedLessonPayload } from './types';
 import { getApiBaseUrl, formatApiError, fetchWithRetry } from './lib/apiBaseUrl';
 import { PLATFORM_GUIDE_VERSION } from './lib/platformGuide';
@@ -183,7 +184,9 @@ export default function App() {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const sidebarResizeRafRef = useRef<number | null>(null);
   const pendingSidebarWidthRef = useRef(320);
-  const headerMoreMenuRef = useRef<HTMLDivElement | null>(null);
+  const headerMoreButtonRef = useRef<HTMLButtonElement | null>(null);
+  const headerMoreMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const [headerMoreMenuPos, setHeaderMoreMenuPos] = useState({ top: 0, right: 0, maxHeight: 400 });
 
   const t = translations[lang];
   const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
@@ -901,6 +904,7 @@ export default function App() {
     }
 
     setIsTranslating(true);
+    showToast(t.translating, 'info');
     try {
       const resolvedCode = targetCode || translateTarget;
       const languageByCode: Record<string, string> = {
@@ -1112,15 +1116,39 @@ export default function App() {
   }, [lang]);
 
   useEffect(() => {
+    if (!showHeaderMoreMenu) return;
+
+    const updateMenuPosition = () => {
+      const trigger = headerMoreButtonRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const pad = 8;
+      const top = rect.bottom + 4;
+      setHeaderMoreMenuPos({
+        top,
+        right: Math.max(pad, window.innerWidth - rect.right),
+        maxHeight: Math.max(160, window.innerHeight - top - pad),
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+
     const onMouseDown = (e: MouseEvent) => {
-      if (!headerMoreMenuRef.current) return;
-      if (!headerMoreMenuRef.current.contains(e.target as Node)) {
-        setShowHeaderMoreMenu(false);
-      }
+      const target = e.target as Node;
+      if (headerMoreButtonRef.current?.contains(target)) return;
+      if (headerMoreMenuPanelRef.current?.contains(target)) return;
+      setShowHeaderMoreMenu(false);
     };
     document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
-  }, []);
+
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+      document.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [showHeaderMoreMenu]);
 
   useEffect(() => {
     if (!showHistoryModal) return;
@@ -1426,8 +1454,9 @@ export default function App() {
                   </div>
                 ) : null}
 
-                <div ref={headerMoreMenuRef} className="relative">
+                <div className="relative">
                   <button
+                    ref={headerMoreButtonRef}
                     type="button"
                     onClick={() => setShowHeaderMoreMenu((s) => !s)}
                     className={cn(
@@ -1436,11 +1465,21 @@ export default function App() {
                     )}
                     title={lang === 'kh' ? 'ផ្សេងទៀត' : 'More'}
                     aria-label={t.moreActions}
+                    aria-expanded={showHeaderMoreMenu}
                   >
                     <MoreHorizontal size={20} />
                   </button>
-                  {showHeaderMoreMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1 shadow-xl z-40">
+                  {showHeaderMoreMenu &&
+                    createPortal(
+                      <div
+                        ref={headerMoreMenuPanelRef}
+                        style={{
+                          top: headerMoreMenuPos.top,
+                          right: headerMoreMenuPos.right,
+                          maxHeight: headerMoreMenuPos.maxHeight,
+                        }}
+                        className="fixed z-[200] w-56 overflow-y-auto overscroll-contain custom-scrollbar rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-800"
+                      >
                       <p className="px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">
                         {t.moreActions}
                       </p>
@@ -1572,8 +1611,9 @@ export default function App() {
                           {option.label}
                         </button>
                       ))}
-                    </div>
-                  )}
+                      </div>,
+                      document.body
+                    )}
                 </div>
               </>
             )}
